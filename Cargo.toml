@@ -1,0 +1,20 @@
+[package]
+name = "termassist"
+version = "0.1.0"
+edition = "2021"
+description = "Split-terminal assistant: your shell on one side, a CLI agent on the other"
+license = "MIT"
+authors = ["RunningBugs"]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+directories = "5"
+interprocess = "2"
+portable-pty = "0.8"
+ratatui = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+vt100 = { path = "vendor/vt100" }  # 0.15.2 + backported deep-scrollback fix (see vendor/vt100/src/grid.rs)

@@ -1,0 +1,15 @@
+# Rust build output
+/target/
+
+# Cargo artifacts (Cargo.lock is committed: this crate builds a binary)
+**/*.rs.bk
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
