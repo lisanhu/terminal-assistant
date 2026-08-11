@@ -9,6 +9,11 @@ use ratatui::widgets::{Block, Borders};
 use ratatui::Frame;
 
 pub fn draw(f: &mut Frame, app: &App) {
+    // A degenerate (e.g. not-yet-initialized 0x0) terminal must not panic.
+    let area = f.area();
+    if area.width < 2 || area.height < 2 {
+        return;
+    }
     let (la, ra) = app.rects();
     if let (Some(area), Some(pane)) = (la, &app.left) {
         draw_pane(f, area, pane, app.focus == Focus::Left, app.mode);

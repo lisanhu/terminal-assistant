@@ -31,6 +31,10 @@ pub fn main_entry() {
     about = "Split-terminal assistant: shell on one side, CLI agent on the other"
 )]
 struct Cli {
+    /// Use this config file instead of the default per-OS path
+    /// (affects the first-run wizard and config loading).
+    #[arg(long, global = true, value_name = "PATH")]
+    config: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<Cmd>,
 }
@@ -96,11 +100,17 @@ pub fn run() -> Result<()> {
                 .and_then(|sock| ipc::open_agent(&sock).ok());
             match delegated {
                 Some(msg) => println!("{msg}"),
-                None => run_tui(),
+                None => run_tui(config_path_or_default(cli.config)),
             }
         }
     }
     Ok(())
+}
+
+/// The effective config file path: `--config <path>` if given, else the
+/// default per-OS location.
+pub(crate) fn config_path_or_default(path: Option<PathBuf>) -> PathBuf {
+    path.unwrap_or_else(config::Config::default_path)
 }
 
 /// Decide whether a no-subcommand invocation should delegate to a running
@@ -143,15 +153,19 @@ fn split_command(cmd: &str) -> (String, Vec<String>) {
     (program, parts.map(str::to_string).collect())
 }
 
-fn run_tui() {
-    if let Err(e) = tui_inner() {
+fn run_tui(config_path: PathBuf) {
+    if let Err(e) = tui_inner(config_path) {
         eprintln!("termassist: {e:#}");
         std::process::exit(1);
     }
 }
 
-fn tui_inner() -> Result<()> {
-    let cfg = config::Config::load();
+fn tui_inner(config_path: PathBuf) -> Result<()> {
+    // First-run wizard (no config file + interactive): asks for the agent
+    // command, writes the config and exits without entering the TUI. Runs
+    // before the skill prompt; a no-op when a config file exists.
+    config::first_run_wizard(&config_path);
+    let cfg = config::Config::load_from(&config_path);
     skill::pre_tui_check();
 
     // Panes (spawned in cooked mode so spawn errors can still be reported
@@ -317,6 +331,18 @@ mod tests {
         assert_eq!(
             super::split_command("kimi --verbose  --x"),
             ("kimi".to_string(), vec!["--verbose".to_string(), "--x".to_string()])
+        );
+    }
+
+    #[test]
+    fn config_path_prefers_explicit_value() {
+        assert_eq!(
+            super::config_path_or_default(Some(std::path::PathBuf::from("./dev-config.toml"))),
+            std::path::PathBuf::from("./dev-config.toml")
+        );
+        assert_eq!(
+            super::config_path_or_default(None),
+            crate::config::Config::default_path()
         );
     }
 }

@@ -1,9 +1,10 @@
 //! TOML configuration loading, defaults and key bindings.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
 
 /// Initial split direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -210,6 +211,118 @@ impl Config {
     }
 }
 
+// ---------------------------------------------------------------------------
+// First-run wizard
+// ---------------------------------------------------------------------------
+
+/// Pure decision: the wizard runs only when there is no config file yet and
+/// both stdin and stdout are terminals.
+pub fn should_run_wizard(config_exists: bool, interactive: bool) -> bool {
+    !config_exists && interactive
+}
+
+/// Full default config file with `agent` substituted in.
+pub fn default_config_toml(agent: &str) -> String {
+    let agent = agent.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        r#"# termassist configuration
+# Agent command for the agent pane (arguments allowed, split on whitespace).
+agent = "{agent}"
+# shell = "/bin/zsh"      # default: $SHELL (Unix) / %COMSPEC% or powershell (Windows)
+layout = "horizontal"     # "horizontal" (left/right) or "vertical" (top/bottom)
+ratio = 0.5               # fraction for the left/top pane, 0.1..=0.9
+scrollback_lines = 10000  # per pane
+
+[keybindings]
+focus_toggle = "Ctrl+g"
+layout_toggle = "Ctrl+t"
+scroll_mode = "Ctrl+s"
+ratio_increase = "Ctrl+Right"
+ratio_decrease = "Ctrl+Left"
+toggle_agent = "Ctrl+n"
+quit = "Ctrl+q"
+"#
+    )
+}
+
+/// Write the default config (chosen agent, everything else default) to
+/// `path`, creating parent directories.
+pub fn write_default_config(path: &Path, agent: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("cannot create {}", parent.display()))?;
+    }
+    std::fs::write(path, default_config_toml(agent))
+        .with_context(|| format!("cannot write {}", path.display()))
+}
+
+/// Ask (on `input`/`output`) for the agent command. Tri-state result:
+/// `Some(cmd)` for a valid (non-empty) entry, `None` for empty/blank input
+/// or EOF. I/O is injected so the flow is unit-testable.
+pub fn prompt_agent_command(
+    input: &mut impl std::io::BufRead,
+    output: &mut impl std::io::Write,
+    config_path: &Path,
+) -> Option<String> {
+    writeln!(
+        output,
+        "termassist: first run — no config file at {}.",
+        config_path.display()
+    )
+    .ok()?;
+    write!(output, "Agent command for the agent pane (arguments allowed): ").ok()?;
+    output.flush().ok()?;
+    let mut line = String::new();
+    input.read_line(&mut line).ok()?;
+    let line = line.trim();
+    if line.is_empty() { None } else { Some(line.to_string()) }
+}
+
+/// Confirmation echoed after the default config has been written.
+pub fn wizard_echo(agent: &str, path: &Path) -> String {
+    format!("agent = \"{agent}\"\ntermassist: config written to {}", path.display())
+}
+
+/// Interactive first-run wizard: when there is no config file and stdin /
+/// stdout are terminals, ask for the agent command and exit — the wizard
+/// never enters the TUI. A valid command writes the default config, echoes
+/// it, and exits 0; empty input / EOF / write failure print a hint and exit
+/// with a non-zero status (all still before any raw mode / TUI setup).
+/// Does nothing when the wizard does not apply (config exists, or
+/// non-interactive) — the caller then loads the config the usual way.
+pub fn first_run_wizard(path: &Path) {
+    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    if !should_run_wizard(path.exists(), interactive) {
+        return;
+    }
+
+    let agent = match prompt_agent_command(
+        &mut std::io::stdin().lock(),
+        &mut std::io::stdout().lock(),
+        path,
+    ) {
+        Some(agent) => agent,
+        None => {
+            println!("termassist: no agent command entered — agent is not configured.");
+            println!("  To configure it later, edit: {}", path.display());
+            std::process::exit(1);
+        }
+    };
+
+    match write_default_config(path, &agent) {
+        Ok(()) => {
+            println!("{}", wizard_echo(&agent, path));
+            println!("termassist: run `termassist` again to start.");
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("termassist: cannot write config to {}: {e:#}", path.display());
+            eprintln!("  Fix the path or permissions, or retry with --config <path>.");
+            std::process::exit(1);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,5 +424,67 @@ quit = "Ctrl+F12"
         assert!(kb.matches(&ev));
         let ev2 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
         assert!(!kb.matches(&ev2));
+    }
+
+    #[test]
+    fn prompt_agent_command_takes_input_verbatim() {
+        let mut input = std::io::Cursor::new("claude --verbose\n");
+        let mut output = Vec::new();
+        let agent =
+            prompt_agent_command(&mut input, &mut output, Path::new("/tmp/x/config.toml"));
+        assert_eq!(agent, Some("claude --verbose".to_string()));
+        let shown = String::from_utf8(output).unwrap();
+        assert!(shown.contains("first run"));
+    }
+
+    #[test]
+    fn prompt_agent_command_none_on_empty_blank_or_eof() {
+        for input_text in ["\n", "  \t \n", ""] {
+            let mut input = std::io::Cursor::new(input_text);
+            let mut output = Vec::new();
+            let agent =
+                prompt_agent_command(&mut input, &mut output, Path::new("/tmp/x/config.toml"));
+            assert_eq!(agent, None, "input {input_text:?} should mean 'not configured'");
+        }
+    }
+
+    #[test]
+    fn wizard_echo_shows_agent_and_path() {
+        let echo = wizard_echo("claude --verbose", Path::new("/home/u/.config/termassist/config.toml"));
+        assert!(echo.contains("agent = \"claude --verbose\""), "{echo}");
+        assert!(echo.contains("/home/u/.config/termassist/config.toml"), "{echo}");
+    }
+
+    #[test]
+    fn default_config_toml_roundtrips_with_chosen_agent() {
+        let text = default_config_toml("claude --verbose");
+        let c: Config = toml::from_str(&text).unwrap();
+        assert_eq!(c.agent, "claude --verbose");
+        assert!((c.ratio - 0.5).abs() < f32::EPSILON);
+        assert_eq!(c.layout, Layout::Horizontal);
+        assert_eq!(c.scrollback_lines, 10_000);
+        assert_eq!(
+            c.keybindings.toggle_agent,
+            KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('n'))
+        );
+    }
+
+    #[test]
+    fn write_default_config_creates_parent_dirs() {
+        let base = std::env::temp_dir().join(format!("termassist-cfg-{}", std::process::id()));
+        let path = base.join("nested").join("config.toml");
+        let _ = std::fs::remove_dir_all(&base);
+        write_default_config(&path, "codex").unwrap();
+        let c: Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(c.agent, "codex");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn wizard_decision_truth_table() {
+        assert!(should_run_wizard(false, true));
+        assert!(!should_run_wizard(true, true), "existing config: stay silent");
+        assert!(!should_run_wizard(false, false), "non-interactive: skip");
+        assert!(!should_run_wizard(true, false));
     }
 }

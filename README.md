@@ -2,8 +2,9 @@
 
 **English** | [中文](README.zh-CN.md)
 
-A split-terminal assistant: your normal shell on one side, a nested CLI agent
-(default [`kimi`](https://github.com/MoonshotAI/kimi-cli)) on the other — in
+A split-terminal assistant: your normal shell on one side, a nested CLI
+agent of your choice ([`kimi`](https://github.com/MoonshotAI/kimi-cli),
+`claude`, `codex`, … — picked on first run) on the other — in
 the terminal you already use. No tmux, no new terminal emulator.
 
 ```
@@ -20,30 +21,13 @@ skill teaches the agent to run `termassist read-pane` to read your pane's
 screen + scrollback — so you can ask "why did that command fail?" without
 copy-pasting anything.
 
-## Features
+## Demo
 
-- **Two real terminals, one window** — left: your `$SHELL`; right: any CLI
-  agent (`kimi` by default, configurable). Each side is a real PTY rendered
-  through a full vt100 terminal emulator, so colors, full-screen TUIs and
-  CJK/emoji all render correctly.
-- **Agent sees your terminal** — via `termassist read-pane` over a local
-  socket, packaged as a portable [skill](skills/termassist/SKILL.md) that
-  works with skill-based agents (kimi, Pi, Claude Code, …); no MCP required.
-- **Toggleable agent panel** — `Ctrl+N` spawns / hides / shows the agent.
-  Hiding is a *suspend, not a kill*: the agent keeps running in the
-  background while your shell goes fullscreen.
-- **Sane pane lifecycle** — when a pane's process exits, the pane closes and
-  the survivor takes the full screen. Both panes start in the directory you
-  launched `termassist` from.
-- **Nested invocation just works** — running `termassist` (or `ta`) inside a
-  pane talks to the running instance instead of nesting a new TUI: it opens
-  or focuses the agent panel and exits.
-- **Keyboard & mouse** — focus switching, split direction, divider dragging,
-  per-pane scrollback; every key binding is configurable.
-- **Cross-platform by design** — platform-specific code is confined to
-  `src/pty.rs` (portable-pty: Unix PTY / Windows ConPTY) and `src/ipc.rs`
-  (interprocess: Unix socket / Windows named pipe). Built and tested on
-  Linux; macOS/Windows compile but are untested.
+![termassist demo: all key bindings](assets/demo.gif)
+
+All key bindings: focus toggle, layout toggle, divider move,
+scroll mode, agent panel hide/show, quit. (Source: `assets/demo.tape`,
+rendered with [VHS](https://github.com/charmbracelet/vhs).)
 
 ## Install
 
@@ -58,31 +42,11 @@ For the short `ta` alias, add to your shell rc (`~/.bashrc` / `~/.zshrc`):
 alias ta=termassist
 ```
 
-## Usage
-
-```sh
-termassist                 # start the split TUI (left: $SHELL, right: kimi)
-termassist read-pane       # print the user pane's screen + scrollback
-termassist read-pane --lines 50
-termassist read-pane --pane right   # read the agent pane instead
-termassist install-skill --scope user
-```
-
-- `read-pane` connects to a running TUI over a local socket (Unix domain
-  socket / Windows named pipe). The socket is auto-discovered via
-  `$TERM_ASSIST_SOCK` (injected into both panes), then the newest socket in
-  the temp dir; `--socket <path>` overrides. Reading a pane whose process
-  has exited fails cleanly with `pane closed`.
-- `install-skill` writes the bundled `SKILL.md` (`--scope user` →
-  `~/.agents/skills/termassist/`, `--scope project` →
-  `./.agents/skills/termassist/`, `--path <dir>` → `<dir>/SKILL.md`). On
-  startup, if the skill is missing from both common locations, termassist
-  asks (before entering the TUI) whether to install it.
-
 ## Key bindings
 
 Everything that is not a TUI binding is forwarded to the focused pane. All
-bindings are configurable (see below).
+bindings are configurable (see [Configuration](#configuration)); these are
+the defaults:
 
 | Key | Action |
 | --- | --- |
@@ -108,6 +72,74 @@ both PTYs.
 | Never started / process exited | Spawn it (in the original startup cwd) and show |
 | Running and visible | Hide it; the shell goes fullscreen |
 | Running but hidden | Show it again |
+
+## Features
+
+- **Two real terminals, one window** — left: your `$SHELL`; right: any CLI
+  agent (chosen on first run, changeable in the config). Each side is a real PTY rendered
+  through a full vt100 terminal emulator, so colors, full-screen TUIs and
+  CJK/emoji all render correctly.
+- **Agent sees your terminal** — via `termassist read-pane` over a local
+  socket, packaged as a portable [skill](skills/termassist/SKILL.md) that
+  works with skill-based agents (kimi, Pi, Claude Code, …); no MCP required.
+- **Toggleable agent panel** — `Ctrl+N` spawns / hides / shows the agent.
+  Hiding is a *suspend, not a kill*: the agent keeps running in the
+  background while your shell goes fullscreen.
+- **Sane pane lifecycle** — when a pane's process exits, the pane closes and
+  the survivor takes the full screen. Both panes start in the directory you
+  launched `termassist` from.
+- **Nested invocation just works** — running `termassist` (or `ta`) inside a
+  pane talks to the running instance instead of nesting a new TUI: it opens
+  or focuses the agent panel and exits.
+- **Keyboard & mouse** — focus switching, split direction, divider dragging,
+  per-pane scrollback; every key binding is configurable.
+- **Cross-platform by design** — platform-specific code is confined to
+  `src/pty.rs` (portable-pty: Unix PTY / Windows ConPTY) and `src/ipc.rs`
+  (interprocess: Unix socket / Windows named pipe). Built and tested on
+  Linux; macOS/Windows compile but are untested.
+
+## Usage
+
+### First run
+
+On the first start (no config file yet), before entering the TUI,
+termassist asks for the agent command to run in the agent pane (arguments
+allowed). A valid command is written verbatim into a complete default
+config; the choice plus the config path are echoed (`agent = "..."` /
+`config written to <path>`), and the program exits 0 with a hint to run
+`termassist` again — the wizard never enters the TUI itself; the next
+start finds the config and goes straight to the TUI. An empty or blank
+answer (or EOF) prints a "not configured" hint — including the config file
+path to edit later — and exits with a non-zero status without writing a
+config, so the wizard runs again on the next start. Non-interactive runs
+(piped stdin/stdout, recorders) skip the wizard entirely and do not write
+a config. Change the agent later anytime by editing `agent` in the config
+file.
+
+```sh
+termassist                 # start the split TUI (left: $SHELL, right: kimi)
+termassist --config ./dev-config.toml   # use a different config file
+termassist read-pane       # print the user pane's screen + scrollback
+termassist read-pane --lines 50
+termassist read-pane --pane right   # read the agent pane instead
+termassist install-skill --scope user
+```
+
+`--config <path>` replaces the default per-OS config path everywhere (the
+wizard's existence check and write target, config loading, and the paths
+shown in wizard messages). Handy for development: point it at a repo-local
+`./dev-config.toml` (git-ignored) instead of touching `~/.config`.
+
+- `read-pane` connects to a running TUI over a local socket (Unix domain
+  socket / Windows named pipe). The socket is auto-discovered via
+  `$TERM_ASSIST_SOCK` (injected into both panes), then the newest socket in
+  the temp dir; `--socket <path>` overrides. Reading a pane whose process
+  has exited fails cleanly with `pane closed`.
+- `install-skill` writes the bundled `SKILL.md` (`--scope user` →
+  `~/.agents/skills/termassist/`, `--scope project` →
+  `./.agents/skills/termassist/`, `--path <dir>` → `<dir>/SKILL.md`). On
+  startup, if the skill is missing from both common locations, termassist
+  asks (before entering the TUI) whether to install it.
 
 ## Configuration
 

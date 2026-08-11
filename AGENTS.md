@@ -3,9 +3,15 @@
 ## Project overview
 
 `termassist` is a split-terminal assistant written in Rust: the user's normal
-shell runs in one pane and a nested CLI agent (default `kimi`) runs in the
-other, inside the terminal the user already has. No tmux, no custom terminal
-emulator.
+shell runs in one pane and a nested CLI agent runs in the other, inside the
+terminal the user already has. No tmux, no custom terminal emulator. On the
+first run (no config file) a plain-text wizard asks for the agent command
+(arguments allowed; empty input or EOF aborts with a non-zero exit and no
+config written), writes the default config, and exits 0 without entering
+the TUI — the next start finds the config and goes straight to the TUI;
+non-interactive runs skip it. `--config <path>` overrides the config file
+location everywhere (wizard, loading, messages); `./dev-config.toml` is
+git-ignored for local development.
 
 Architecture (single process, ratatui event loop):
 
@@ -63,7 +69,10 @@ when changing behavior.
 - `ui.rs` — ratatui rendering: borders, focus styling, cell-by-cell vt100 →
   buffer mapping (wide chars occupy two columns).
 - `config.rs` — TOML config (`~/.config/termassist/config.toml` on Linux),
-  defaults, `KeyBind` parsing (`"Ctrl+g"`, `"Alt+x"`, `"F5"`, …). Invalid
+  defaults, `KeyBind` parsing (`"Ctrl+g"`, `"Alt+x"`, `"F5"`, …), and the
+  first-run wizard (`prompt_agent_command`, `first_run_wizard`; plain
+  stdin/stdout, skipped when a config exists or the session is
+  non-interactive). Invalid
   config falls back to defaults with a stderr warning.
 
 Cross-platform rule: platform-specific code is confined to `src/pty.rs` and
@@ -75,7 +84,7 @@ tested on Linux; macOS/Windows compile but are untested.
 ```sh
 cargo build            # debug build
 cargo build --release  # binary at target/release/termassist
-cargo test             # unit tests, all in-module (33 tests as of writing)
+cargo test             # unit tests, all in-module (40 tests as of writing)
 cargo clippy           # lint
 cargo fmt              # format
 ```
