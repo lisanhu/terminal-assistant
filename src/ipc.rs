@@ -7,11 +7,11 @@
 use crate::term::Term;
 use anyhow::{anyhow, Context, Result};
 use interprocess::local_socket::traits::{Listener as _, Stream as _};
-use interprocess::local_socket::{ListenerOptions, Stream};
 #[cfg(not(windows))]
 use interprocess::local_socket::{GenericFilePath, ToFsName};
 #[cfg(windows)]
 use interprocess::local_socket::{GenericNamespaced, ToNsName};
+use interprocess::local_socket::{ListenerOptions, Stream};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::sync::mpsc;
@@ -85,7 +85,11 @@ impl Server {
                 });
             }
         });
-        Ok(Server { path: path.to_string(), state, cmd_rx })
+        Ok(Server {
+            path: path.to_string(),
+            state,
+            cmd_rx,
+        })
     }
 
     /// Update (or clear) a pane handle after a respawn or close.
@@ -130,15 +134,25 @@ fn handle_conn(
                         .lock()
                         .map_err(|_| anyhow!("pane lock poisoned"))?
                         .capture(lines);
-                    Response { ok: true, text, error: None }
+                    Response {
+                        ok: true,
+                        text,
+                        error: None,
+                    }
                 }
             }
         }
         Request::OpenAgent => {
             let (reply_tx, reply_rx) = mpsc::channel();
-            cmd_tx.send(reply_tx).map_err(|_| anyhow!("tui is not listening"))?;
+            cmd_tx
+                .send(reply_tx)
+                .map_err(|_| anyhow!("tui is not listening"))?;
             match reply_rx.recv_timeout(Duration::from_secs(5)) {
-                Ok(msg) => Response { ok: true, text: msg, error: None },
+                Ok(msg) => Response {
+                    ok: true,
+                    text: msg,
+                    error: None,
+                },
                 Err(_) => Response {
                     ok: false,
                     text: String::new(),
@@ -154,8 +168,8 @@ fn handle_conn(
 }
 
 fn request(socket: &str, req: &Request) -> Result<String> {
-    let mut stream =
-        Stream::connect(socket_name(socket)?).with_context(|| format!("cannot connect to {socket}"))?;
+    let mut stream = Stream::connect(socket_name(socket)?)
+        .with_context(|| format!("cannot connect to {socket}"))?;
     let payload = serde_json::to_vec(req)?;
     stream.write_all(&payload)?;
     stream.flush()?;
@@ -165,7 +179,9 @@ fn request(socket: &str, req: &Request) -> Result<String> {
     if resp.ok {
         Ok(resp.text)
     } else {
-        Err(anyhow!(resp.error.unwrap_or_else(|| "unknown error".to_string())))
+        Err(anyhow!(resp
+            .error
+            .unwrap_or_else(|| "unknown error".to_string())))
     }
 }
 
@@ -256,7 +272,10 @@ mod tests {
 
     #[test]
     fn request_response_serde_roundtrip() {
-        let req = Request::ReadPane { pane: 1, lines: Some(42) };
+        let req = Request::ReadPane {
+            pane: 1,
+            lines: Some(42),
+        };
         let bytes = serde_json::to_vec(&req).unwrap();
         assert_eq!(serde_json::from_slice::<Request>(&bytes).unwrap(), req);
         assert_eq!(
@@ -264,9 +283,19 @@ mod tests {
             r#"{"cmd":"open_agent"}"#
         );
         let req2: Request = serde_json::from_str(r#"{"cmd":"read_pane","pane":0}"#).unwrap();
-        assert_eq!(req2, Request::ReadPane { pane: 0, lines: None });
+        assert_eq!(
+            req2,
+            Request::ReadPane {
+                pane: 0,
+                lines: None
+            }
+        );
 
-        let resp = Response { ok: true, text: "hi".to_string(), error: None };
+        let resp = Response {
+            ok: true,
+            text: "hi".to_string(),
+            error: None,
+        };
         let bytes = serde_json::to_vec(&resp).unwrap();
         assert_eq!(serde_json::from_slice::<Response>(&bytes).unwrap(), resp);
 

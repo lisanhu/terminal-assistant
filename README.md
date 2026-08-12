@@ -26,7 +26,7 @@ copy-pasting anything.
 ![termassist demo: all key bindings](assets/demo.gif)
 
 All key bindings: focus toggle, layout toggle, divider move,
-scroll mode, agent panel hide/show, quit. (Source: `assets/demo.tape`,
+scroll mode, agent panel hide/show, pane zoom, quit. (Source: `assets/demo.tape`,
 rendered with [VHS](https://github.com/charmbracelet/vhs).)
 
 ## Install
@@ -44,18 +44,22 @@ alias ta=termassist
 
 ## Key bindings
 
-Everything that is not a TUI binding is forwarded to the focused pane. All
-bindings are configurable (see [Configuration](#configuration)); these are
-the defaults:
+TUI keys live behind a **prefix** (`Alt+Q` by default, tmux-style): press
+the prefix, then the action key. Everything that is not a prefixed TUI
+binding is forwarded to the focused pane — so plain keys like `g` or `Ctrl+S`
+reach your shell/agent untouched. Pressing the prefix twice sends the prefix
+key itself to the pane. All bindings are configurable (see
+[Configuration](#configuration)); these are the defaults:
 
-| Key | Action |
+| Keys | Action |
 | --- | --- |
-| `Ctrl+G` | Toggle focus between panes |
-| `Ctrl+T` | Toggle split direction (left/right ↔ top/bottom) |
-| `Ctrl+S` | Enter scroll mode for the focused pane |
-| `Ctrl+←` / `Ctrl+→` | Move the divider (resize split ratio) |
-| `Ctrl+N` | Toggle the agent panel (spawn / hide / show) |
-| `Ctrl+Q` | Quit |
+| `Alt+Q` `g` | Toggle focus between panes |
+| `Alt+Q` `t` | Toggle split direction (left/right ↔ top/bottom) |
+| `Alt+Q` `s` | Enter scroll mode for the focused pane |
+| `Alt+Q` `←` / `Alt+Q` `→` | Move the divider (resize split ratio) |
+| `Alt+Q` `n` | Toggle the agent panel (spawn / hide / show) |
+| `Alt+Q` `v` | Zoom the focused pane to fullscreen (toggle; the other pane keeps running in the background) |
+| `Alt+Q` `q` | Quit |
 
 **Scroll mode:** `↑`/`k`, `↓`/`j`, `PageUp`/`PageDown`, `Home`/`g` (top),
 `End`/`G` (bottom), `Esc`/`q` (exit). Reaching the bottom also exits.
@@ -67,7 +71,7 @@ both PTYs.
 
 ### Agent panel states
 
-| Agent state | `Ctrl+N` |
+| Agent state | `Alt+Q` `n` |
 | --- | --- |
 | Never started / process exited | Spawn it (in the original startup cwd) and show |
 | Running and visible | Hide it; the shell goes fullscreen |
@@ -82,7 +86,7 @@ both PTYs.
 - **Agent sees your terminal** — via `termassist read-pane` over a local
   socket, packaged as a portable [skill](skills/termassist/SKILL.md) that
   works with skill-based agents (kimi, Pi, Claude Code, …); no MCP required.
-- **Toggleable agent panel** — `Ctrl+N` spawns / hides / shows the agent.
+- **Toggleable agent panel** — `Alt+Q` `n` spawns / hides / shows the agent.
   Hiding is a *suspend, not a kill*: the agent keeps running in the
   background while your shell goes fullscreen.
 - **Sane pane lifecycle** — when a pane's process exits, the pane closes and
@@ -92,7 +96,9 @@ both PTYs.
   pane talks to the running instance instead of nesting a new TUI: it opens
   or focuses the agent panel and exits.
 - **Keyboard & mouse** — focus switching, split direction, divider dragging,
-  per-pane scrollback; every key binding is configurable.
+  per-pane scrollback; every key binding is configurable. Bracketed paste is
+  negotiated with the host terminal and forwarded to panes that enable it, so
+  pasting into a TUI agent arrives as one atomic paste, not a key flood.
 - **Cross-platform by design** — platform-specific code is confined to
   `src/pty.rs` (portable-pty: Unix PTY / Windows ConPTY) and `src/ipc.rs`
   (interprocess: Unix socket / Windows named pipe). Built and tested on
@@ -156,13 +162,15 @@ ratio = 0.5               # fraction for the left/top pane, 0.1..=0.9
 scrollback_lines = 10000  # per pane
 
 [keybindings]
-focus_toggle = "Ctrl+g"
-layout_toggle = "Ctrl+t"
-scroll_mode = "Ctrl+s"
-ratio_increase = "Ctrl+Right"
-ratio_decrease = "Ctrl+Left"
-toggle_agent = "Ctrl+n"
-quit = "Ctrl+q"
+prefix = "Alt+q"          # TUI keys are prefix, then the key below; prefix+prefix sends the prefix itself
+focus_toggle = "g"
+layout_toggle = "t"
+scroll_mode = "s"
+ratio_increase = "Right"
+ratio_decrease = "Left"
+toggle_agent = "n"
+zoom = "v"
+quit = "q"
 ```
 
 Key syntax: `Ctrl+`/`Alt+`/`Shift+` modifiers plus a key name (`a`–`z`,

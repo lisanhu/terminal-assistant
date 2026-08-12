@@ -52,7 +52,8 @@ when changing behavior.
   event loop, `TermGuard` (RAII terminal restore), nested-invocation
   delegation.
 - `app.rs` — `App` state: two optional panes, focus, layout direction, split
-  ratio, scroll mode, agent hide/show/respawn state machine, pane lifecycle
+  ratio, scroll mode, zoom (focused pane fullscreen), agent hide/show/respawn
+  state machine, pane lifecycle
   (`close_dead_panes`). Platform-independent.
 - `pane.rs` — `Pane`: a PTY child + `Arc<Mutex<Term>>` + scroll offset; owns
   the feeder thread that pumps PTY output into the vt100 parser (panics in
@@ -66,8 +67,15 @@ when changing behavior.
 - `ipc.rs` — local-socket server/client (`Request`/`Response` JSON),
   socket auto-discovery (newest `termassist-*.sock` in temp dir; not
   supported on Windows). **All platform `cfg` for IPC lives here.**
-- `input.rs` — key/mouse routing and key-to-ANSI-bytes encoding
-  (`key_to_bytes`, honoring application-cursor mode).
+- `input.rs` — key/mouse/paste routing and key-to-ANSI-bytes encoding
+  (`key_to_bytes`, honoring application-cursor mode). TUI chrome actions sit
+  behind a configurable prefix key (default `Alt+Q`; `prefix_pending` in
+  `App`); prefix+prefix forwards the prefix key itself. `handle_paste` wraps
+  the paste in bracketed-paste markers when the focused pane's child has
+  enabled mode 2004 (read from the vt100 screen), raw text otherwise.
+- `dbglog.rs` — opt-in debug logging of raw byte streams (host events, both
+  panes' input/output), enabled by `TERM_ASSIST_DEBUG_LOG=<path>`; off
+  otherwise. For diagnosing hard-to-reproduce terminal issues.
 - `ui.rs` — ratatui rendering: borders, focus styling, cell-by-cell vt100 →
   buffer mapping (wide chars occupy two columns).
 - `config.rs` — TOML config (`~/.config/termassist/config.toml` on Linux).
@@ -87,7 +95,7 @@ tested on Linux; macOS/Windows compile but are untested.
 ```sh
 cargo build            # debug build
 cargo build --release  # binary at target/release/termassist
-cargo test             # unit tests, all in-module (43 tests as of writing)
+cargo test             # unit tests, all in-module (56 tests as of writing)
 cargo clippy           # lint
 cargo fmt              # format
 ```
@@ -121,7 +129,7 @@ and are gated with `#[cfg(unix)]`.
   capture tests, `ui.rs` for rendering tests using `ratatui::backend::TestBackend`).
 - Unix-only behavior (PTY spawning, sockets) needs `#[cfg(unix)]` gates.
 - Manual smoke test: `cargo run` inside a real terminal, verify both panes
-  spawn, `Ctrl+N` toggles the agent, and `termassist read-pane` works from
+  spawn, `Alt+Q n` toggles the agent, and `termassist read-pane` works from
   within a pane.
 
 ## Security considerations

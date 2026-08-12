@@ -110,29 +110,35 @@ impl<'de> Deserialize<'de> for KeyBind {
 }
 
 /// Key bindings for the TUI chrome (everything else is forwarded to the
-/// focused pane).
+/// focused pane). Chrome keys live behind `prefix`: press it, then the
+/// action key. `prefix` + `prefix` sends the prefix key itself to the pane.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct KeyBindings {
+    pub prefix: KeyBind,
     pub focus_toggle: KeyBind,
     pub layout_toggle: KeyBind,
     pub scroll_mode: KeyBind,
     pub ratio_increase: KeyBind,
     pub ratio_decrease: KeyBind,
     pub toggle_agent: KeyBind,
+    pub zoom: KeyBind,
     pub quit: KeyBind,
 }
 
 impl Default for KeyBindings {
     fn default() -> Self {
+        let plain = |code| KeyBind::new(KeyModifiers::empty(), code);
         KeyBindings {
-            focus_toggle: KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('g')),
-            layout_toggle: KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('t')),
-            scroll_mode: KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('s')),
-            ratio_increase: KeyBind::new(KeyModifiers::CONTROL, KeyCode::Right),
-            ratio_decrease: KeyBind::new(KeyModifiers::CONTROL, KeyCode::Left),
-            toggle_agent: KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('n')),
-            quit: KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('q')),
+            prefix: KeyBind::new(KeyModifiers::ALT, KeyCode::Char('q')),
+            focus_toggle: plain(KeyCode::Char('g')),
+            layout_toggle: plain(KeyCode::Char('t')),
+            scroll_mode: plain(KeyCode::Char('s')),
+            ratio_increase: plain(KeyCode::Right),
+            ratio_decrease: plain(KeyCode::Left),
+            toggle_agent: plain(KeyCode::Char('n')),
+            zoom: plain(KeyCode::Char('v')),
+            quit: plain(KeyCode::Char('q')),
         }
     }
 }
@@ -270,13 +276,15 @@ ratio = 0.5               # fraction for the left/top pane, 0.1..=0.9
 scrollback_lines = 10000  # per pane
 
 [keybindings]
-focus_toggle = "Ctrl+g"
-layout_toggle = "Ctrl+t"
-scroll_mode = "Ctrl+s"
-ratio_increase = "Ctrl+Right"
-ratio_decrease = "Ctrl+Left"
-toggle_agent = "Ctrl+n"
-quit = "Ctrl+q"
+prefix = "Alt+q"          # TUI keys are prefix, then the key below; prefix+prefix sends the prefix itself
+focus_toggle = "g"
+layout_toggle = "t"
+scroll_mode = "s"
+ratio_increase = "Right"
+ratio_decrease = "Left"
+toggle_agent = "n"
+zoom = "v"
+quit = "q"
 "#
     )
 }
@@ -299,17 +307,28 @@ pub fn prompt_agent_command(
     input: &mut impl std::io::BufRead,
     output: &mut impl std::io::Write,
 ) -> Option<String> {
-    write!(output, "Agent command for the agent pane (arguments allowed): ").ok()?;
+    write!(
+        output,
+        "Agent command for the agent pane (arguments allowed): "
+    )
+    .ok()?;
     output.flush().ok()?;
     let mut line = String::new();
     input.read_line(&mut line).ok()?;
     let line = line.trim();
-    if line.is_empty() { None } else { Some(line.to_string()) }
+    if line.is_empty() {
+        None
+    } else {
+        Some(line.to_string())
+    }
 }
 
 /// Confirmation echoed after the default config has been written.
 pub fn wizard_echo(agent: &str, path: &Path) -> String {
-    format!("agent = \"{agent}\"\ntermassist: config written to {}", path.display())
+    format!(
+        "agent = \"{agent}\"\ntermassist: config written to {}",
+        path.display()
+    )
 }
 
 /// Resolve the effective config for a TUI start. Decides between using the
@@ -353,18 +372,21 @@ fn wizard_prompt_and_exit(path: &Path, error: Option<&str>) -> ! {
             println!("termassist: invalid config at {}: {err}", path.display());
             println!("  Starting the setup wizard to rewrite it.");
         }
-        None => println!("termassist: first run — no config file at {}.", path.display()),
+        None => println!(
+            "termassist: first run — no config file at {}.",
+            path.display()
+        ),
     }
 
-    let agent = match prompt_agent_command(&mut std::io::stdin().lock(), &mut std::io::stdout().lock())
-    {
-        Some(agent) => agent,
-        None => {
-            println!("termassist: no agent command entered — agent is not configured.");
-            println!("  To configure it later, edit: {}", path.display());
-            std::process::exit(1);
-        }
-    };
+    let agent =
+        match prompt_agent_command(&mut std::io::stdin().lock(), &mut std::io::stdout().lock()) {
+            Some(agent) => agent,
+            None => {
+                println!("termassist: no agent command entered — agent is not configured.");
+                println!("  To configure it later, edit: {}", path.display());
+                std::process::exit(1);
+            }
+        };
 
     match write_default_config(path, &agent) {
         Ok(()) => {
@@ -373,7 +395,10 @@ fn wizard_prompt_and_exit(path: &Path, error: Option<&str>) -> ! {
             std::process::exit(0);
         }
         Err(e) => {
-            eprintln!("termassist: cannot write config to {}: {e:#}", path.display());
+            eprintln!(
+                "termassist: cannot write config to {}: {e:#}",
+                path.display()
+            );
             eprintln!("  Fix the path or permissions, or retry with --config <path>.");
             std::process::exit(1);
         }
@@ -389,9 +414,13 @@ mod tests {
         // `agent` is required; every other field keeps its default.
         let err = toml::from_str::<Config>("").unwrap_err().to_string();
         assert!(err.contains("agent"), "{err}");
-        let err = toml::from_str::<Config>("ratio = 0.3\n").unwrap_err().to_string();
+        let err = toml::from_str::<Config>("ratio = 0.3\n")
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("agent"), "{err}");
-        let err = toml::from_str::<Config>("agent = 42\n").unwrap_err().to_string();
+        let err = toml::from_str::<Config>("agent = 42\n")
+            .unwrap_err()
+            .to_string();
         assert!(!err.is_empty());
     }
 
@@ -404,12 +433,16 @@ mod tests {
         assert!((c.ratio - 0.5).abs() < f32::EPSILON);
         assert_eq!(c.scrollback_lines, 10_000);
         assert_eq!(
+            c.keybindings.prefix,
+            KeyBind::new(KeyModifiers::ALT, KeyCode::Char('q'))
+        );
+        assert_eq!(
             c.keybindings.focus_toggle,
-            KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('g'))
+            KeyBind::new(KeyModifiers::empty(), KeyCode::Char('g'))
         );
         assert_eq!(
             c.keybindings.toggle_agent,
-            KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('n'))
+            KeyBind::new(KeyModifiers::empty(), KeyCode::Char('n'))
         );
     }
 
@@ -423,13 +456,14 @@ ratio = 0.7
 scrollback_lines = 5000
 
 [keybindings]
-focus_toggle = "Ctrl+b"
-layout_toggle = "Alt+l"
-scroll_mode = "Ctrl+u"
-ratio_increase = "Ctrl+Up"
-ratio_decrease = "Ctrl+Down"
-toggle_agent = "Alt+n"
-quit = "Ctrl+F12"
+prefix = "Alt+x"
+focus_toggle = "b"
+layout_toggle = "l"
+scroll_mode = "u"
+ratio_increase = "Up"
+ratio_decrease = "Down"
+toggle_agent = "n"
+quit = "F12"
 "#;
         let c: Config = toml::from_str(text).unwrap();
         assert_eq!(c.agent, "kimi --verbose");
@@ -438,24 +472,24 @@ quit = "Ctrl+F12"
         assert!((c.ratio - 0.7).abs() < f32::EPSILON);
         assert_eq!(c.scrollback_lines, 5000);
         assert_eq!(
-            c.keybindings.focus_toggle,
-            KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('b'))
+            c.keybindings.prefix,
+            KeyBind::new(KeyModifiers::ALT, KeyCode::Char('x'))
         );
         assert_eq!(
-            c.keybindings.layout_toggle,
-            KeyBind::new(KeyModifiers::ALT, KeyCode::Char('l'))
+            c.keybindings.focus_toggle,
+            KeyBind::new(KeyModifiers::empty(), KeyCode::Char('b'))
         );
         assert_eq!(
             c.keybindings.ratio_increase,
-            KeyBind::new(KeyModifiers::CONTROL, KeyCode::Up)
+            KeyBind::new(KeyModifiers::empty(), KeyCode::Up)
         );
         assert_eq!(
             c.keybindings.toggle_agent,
-            KeyBind::new(KeyModifiers::ALT, KeyCode::Char('n'))
+            KeyBind::new(KeyModifiers::empty(), KeyCode::Char('n'))
         );
         assert_eq!(
             c.keybindings.quit,
-            KeyBind::new(KeyModifiers::CONTROL, KeyCode::F(12))
+            KeyBind::new(KeyModifiers::empty(), KeyCode::F(12))
         );
     }
 
@@ -511,15 +545,24 @@ quit = "Ctrl+F12"
             let mut input = std::io::Cursor::new(input_text);
             let mut output = Vec::new();
             let agent = prompt_agent_command(&mut input, &mut output);
-            assert_eq!(agent, None, "input {input_text:?} should mean 'not configured'");
+            assert_eq!(
+                agent, None,
+                "input {input_text:?} should mean 'not configured'"
+            );
         }
     }
 
     #[test]
     fn wizard_echo_shows_agent_and_path() {
-        let echo = wizard_echo("claude --verbose", Path::new("/home/u/.config/termassist/config.toml"));
+        let echo = wizard_echo(
+            "claude --verbose",
+            Path::new("/home/u/.config/termassist/config.toml"),
+        );
         assert!(echo.contains("agent = \"claude --verbose\""), "{echo}");
-        assert!(echo.contains("/home/u/.config/termassist/config.toml"), "{echo}");
+        assert!(
+            echo.contains("/home/u/.config/termassist/config.toml"),
+            "{echo}"
+        );
     }
 
     #[test]
@@ -531,8 +574,12 @@ quit = "Ctrl+F12"
         assert_eq!(c.layout, Layout::Horizontal);
         assert_eq!(c.scrollback_lines, 10_000);
         assert_eq!(
+            c.keybindings.prefix,
+            KeyBind::new(KeyModifiers::ALT, KeyCode::Char('q'))
+        );
+        assert_eq!(
             c.keybindings.toggle_agent,
-            KeyBind::new(KeyModifiers::CONTROL, KeyCode::Char('n'))
+            KeyBind::new(KeyModifiers::empty(), KeyCode::Char('n'))
         );
     }
 

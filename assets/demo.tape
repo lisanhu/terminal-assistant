@@ -38,30 +38,39 @@ Type "seq 1 60"
 Enter
 Sleep 2s
 
-# --- Ctrl+G: toggle focus ---
-Ctrl+G
+# --- Alt+Q g: toggle focus ---
+Alt+Q
+Type "g"
 Sleep 3s
-Ctrl+G
+Alt+Q
+Type "g"
 Sleep 2.5s
 
-# --- Ctrl+T: toggle split direction ---
-Ctrl+T
+# --- Alt+Q t: toggle split direction ---
+Alt+Q
+Type "t"
 Sleep 3s
-Ctrl+T
+Alt+Q
+Type "t"
 Sleep 2.5s
 
-# --- Ctrl+Left / Ctrl+Right: move the divider ---
-Ctrl+Left
+# --- Alt+Q Left / Alt+Q Right: move the divider ---
+Alt+Q
+Left
 Sleep 1s
-Ctrl+Left
+Alt+Q
+Left
 Sleep 2.5s
-Ctrl+Right
+Alt+Q
+Right
 Sleep 1s
-Ctrl+Right
+Alt+Q
+Right
 Sleep 2.5s
 
-# --- Ctrl+S: scroll mode ---
-Ctrl+S
+# --- Alt+Q s: scroll mode ---
+Alt+Q
+Type "s"
 Sleep 2s
 Up 5
 Sleep 1.5s
@@ -70,14 +79,25 @@ Sleep 2s
 Escape
 Sleep 2s
 
-# --- Ctrl+N: hide / show agent panel ---
-Ctrl+N
+# --- Alt+Q n: hide / show agent panel ---
+Alt+Q
+Type "n"
 Sleep 3s
-Ctrl+N
+Alt+Q
+Type "n"
 Sleep 3s
 
-# --- Ctrl+Q: quit ---
-Ctrl+Q
+# --- Alt+Q v: zoom the focused pane fullscreen / restore ---
+Alt+Q
+Type "v"
+Sleep 3s
+Alt+Q
+Type "v"
+Sleep 2.5s
+
+# --- Alt+Q q: quit ---
+Alt+Q
+Type "q"
 Sleep 2s
 Type "echo demo finished"
 Enter

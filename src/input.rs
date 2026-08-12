@@ -1,4 +1,4 @@
-//! Keyboard/mouse event routing and key-to-ANSI-bytes encoding.
+//! Keyboard/mouse/paste event routing and key-to-ANSI-bytes encoding.
 //! Platform-independent.
 
 use crate::app::{App, Focus, Mode};
@@ -12,60 +12,103 @@ pub fn handle_key(app: &mut App, kb: &KeyBindings, ev: KeyEvent) {
         return;
     }
 
-    // TUI chrome actions only on fresh presses (ignore key repeat so toggles
-    // don't flicker).
+    // TUI chrome actions live behind the prefix key and only fire on fresh
+    // presses (ignore key repeat so toggles don't flicker).
     if ev.kind == KeyEventKind::Press {
-        if kb.quit.matches(&ev) {
-            app.should_quit = true;
+        if app.prefix_pending {
+            app.prefix_pending = false;
+            if kb.prefix.matches(&ev) {
+                // prefix+prefix: send the prefix key itself to the pane.
+                write_key(app, kb.prefix.code, kb.prefix.mods);
+            } else {
+                chrome_action(app, kb, ev);
+            }
             return;
         }
-        if kb.focus_toggle.matches(&ev) {
-            app.focus = app.focus.other();
-            return;
-        }
-        if kb.layout_toggle.matches(&ev) {
-            app.layout = app.layout.flipped();
-            app.relayout();
-            return;
-        }
-        if kb.ratio_increase.matches(&ev) {
-            app.ratio = (app.ratio + 0.03).min(0.9);
-            app.relayout();
-            return;
-        }
-        if kb.ratio_decrease.matches(&ev) {
-            app.ratio = (app.ratio - 0.03).max(0.1);
-            app.relayout();
-            return;
-        }
-        if app.mode == Mode::Normal && kb.scroll_mode.matches(&ev) {
-            app.mode = Mode::Scroll;
-            return;
-        }
-        if kb.toggle_agent.matches(&ev) {
-            // The main loop performs the respawn (it must also update the
-            // IPC server state).
-            app.toggle_agent_requested = true;
+        if kb.prefix.matches(&ev) {
+            app.prefix_pending = true;
             return;
         }
     }
 
     match app.mode {
         Mode::Scroll => scroll_key(app, ev),
-        Mode::Normal => {
-            let app_cursor = app
-                .focused()
-                .and_then(|p| p.term.lock().ok())
-                .map(|t| t.parser().screen().application_cursor())
-                .unwrap_or(false);
-            if let Some(bytes) = key_to_bytes(ev, app_cursor) {
-                if let Some(pane) = app.focused_mut() {
-                    pane.scroll = 0;
-                    pane.write_input(&bytes);
-                }
-            }
+        Mode::Normal => write_key(app, ev.code, ev.modifiers),
+    }
+}
+
+/// Run the chrome action bound to `ev`, if any; returns true when matched.
+fn chrome_action(app: &mut App, kb: &KeyBindings, ev: KeyEvent) -> bool {
+    if kb.quit.matches(&ev) {
+        app.should_quit = true;
+    } else if kb.focus_toggle.matches(&ev) {
+        app.focus = app.focus.other();
+    } else if kb.layout_toggle.matches(&ev) {
+        app.layout = app.layout.flipped();
+        app.relayout();
+    } else if kb.ratio_increase.matches(&ev) {
+        app.ratio = (app.ratio + 0.03).min(0.9);
+        app.relayout();
+    } else if kb.ratio_decrease.matches(&ev) {
+        app.ratio = (app.ratio - 0.03).max(0.1);
+        app.relayout();
+    } else if app.mode == Mode::Normal && kb.scroll_mode.matches(&ev) {
+        app.mode = Mode::Scroll;
+    } else if kb.toggle_agent.matches(&ev) {
+        // The main loop performs the respawn (it must also update the
+        // IPC server state).
+        app.toggle_agent_requested = true;
+    } else if kb.zoom.matches(&ev) {
+        app.toggle_zoom();
+    } else {
+        return false;
+    }
+    true
+}
+
+/// Encode a key as terminal bytes and forward them to the focused pane.
+fn write_key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+    let app_cursor = app
+        .focused()
+        .and_then(|p| p.term.lock().ok())
+        .map(|t| t.parser().screen().application_cursor())
+        .unwrap_or(false);
+    if let Some(bytes) = key_to_bytes(KeyEvent::new(code, mods), app_cursor) {
+        if let Some(pane) = app.focused_mut() {
+            pane.scroll = 0;
+            pane.write_input(&bytes);
         }
     }
+}
+
+/// Forward a paste to the focused pane: wrapped in bracketed-paste markers
+/// when the child has enabled mode 2004, raw text otherwise (as if typed).
+pub fn handle_paste(app: &mut App, text: &str) {
+    let Some(pane) = app.focused_mut() else {
+        return;
+    };
+    let bracketed = pane
+        .term
+        .lock()
+        .map(|t| t.parser().screen().bracketed_paste())
+        .unwrap_or(false);
+    let bytes = paste_to_bytes(text, bracketed);
+    pane.scroll = 0;
+    pane.write_input(&bytes);
+}
+
+/// Encode pasted text as the bytes a terminal would send: wrapped in
+/// `\x1b[200~` / `\x1b[201~` when the child enabled bracketed paste.
+pub fn paste_to_bytes(text: &str, bracketed: bool) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(text.len() + 12);
+    if bracketed {
+        bytes.extend_from_slice(b"\x1b[200~");
+    }
+    bytes.extend_from_slice(text.as_bytes());
+    if bracketed {
+        bytes.extend_from_slice(b"\x1b[201~");
+    }
+    bytes
 }
 
 fn scroll_key(app: &mut App, ev: KeyEvent) {
@@ -100,6 +143,7 @@ fn scroll_key(app: &mut App, ev: KeyEvent) {
 }
 
 pub fn handle_mouse(app: &mut App, ev: MouseEvent) {
+    app.prefix_pending = false;
     let (la, ra) = app.rects();
     match ev.kind {
         MouseEventKind::Down(MouseButton::Left) => {
@@ -132,7 +176,9 @@ pub fn handle_mouse(app: &mut App, ev: MouseEvent) {
 /// The divider is the two adjacent border columns/rows between the panes
 /// (only meaningful when both panes exist).
 fn on_divider(app: &App, x: u16, y: u16) -> bool {
-    let (Some(la), Some(_)) = app.rects() else { return false };
+    let (Some(la), Some(_)) = app.rects() else {
+        return false;
+    };
     match app.layout {
         Layout::Horizontal => x == la.right().saturating_sub(1) || x == la.right(),
         Layout::Vertical => y == la.bottom().saturating_sub(1) || y == la.bottom(),
@@ -251,33 +297,193 @@ fn csi_tilde_mod1(letter: u8, mods: KeyModifiers) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::AgentSpec;
+    use crate::pane::Pane;
+    use crate::term::Term;
+    use std::sync::{Arc, Mutex};
 
     fn ev(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, mods)
     }
 
+    fn dummy_app() -> App {
+        let pane = || Pane::dummy(Arc::new(Mutex::new(Term::new(5, 20, 10))));
+        App::new(
+            Some(pane()),
+            Some(pane()),
+            Layout::Horizontal,
+            0.5,
+            10,
+            AgentSpec {
+                program: "x".to_string(),
+                args: vec![],
+                env: vec![],
+                cwd: None,
+            },
+        )
+    }
+
+    #[test]
+    fn prefix_arms_and_action_key_fires() {
+        let kb = KeyBindings::default();
+        let mut app = dummy_app();
+        assert_eq!(app.focus, Focus::Left);
+        handle_key(&mut app, &kb, ev(kb.prefix.code, kb.prefix.mods));
+        assert!(app.prefix_pending);
+        assert_eq!(app.focus, Focus::Left, "prefix alone does nothing");
+        handle_key(&mut app, &kb, ev(KeyCode::Char('g'), KeyModifiers::NONE));
+        assert!(!app.prefix_pending);
+        assert_eq!(app.focus, Focus::Right);
+    }
+
+    #[test]
+    fn action_key_without_prefix_goes_to_pane() {
+        let kb = KeyBindings::default();
+        let mut app = dummy_app();
+        // Plain `g` is forwarded, not a focus toggle.
+        handle_key(&mut app, &kb, ev(KeyCode::Char('g'), KeyModifiers::NONE));
+        assert!(!app.prefix_pending);
+        assert_eq!(app.focus, Focus::Left);
+        // A modifier+key combo never fires without the prefix either.
+        handle_key(&mut app, &kb, ev(KeyCode::Char('g'), KeyModifiers::CONTROL));
+        assert!(!app.prefix_pending);
+        assert_eq!(app.focus, Focus::Left);
+    }
+
+    #[test]
+    fn unknown_key_after_prefix_is_swallowed() {
+        let kb = KeyBindings::default();
+        let mut app = dummy_app();
+        handle_key(&mut app, &kb, ev(kb.prefix.code, kb.prefix.mods));
+        handle_key(&mut app, &kb, ev(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert!(!app.prefix_pending);
+        assert_eq!(app.focus, Focus::Left);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn prefix_prefix_sends_prefix_through_without_firing() {
+        let kb = KeyBindings::default();
+        let mut app = dummy_app();
+        handle_key(&mut app, &kb, ev(kb.prefix.code, kb.prefix.mods));
+        handle_key(&mut app, &kb, ev(kb.prefix.code, kb.prefix.mods));
+        assert!(!app.prefix_pending);
+        assert_eq!(app.focus, Focus::Left, "no chrome action fired");
+    }
+
+    #[test]
+    fn key_release_neither_arms_nor_fires() {
+        let kb = KeyBindings::default();
+        let mut app = dummy_app();
+        let rel = KeyEvent::new_with_kind(kb.prefix.code, kb.prefix.mods, KeyEventKind::Release);
+        handle_key(&mut app, &kb, rel);
+        assert!(!app.prefix_pending);
+    }
+
+    #[test]
+    fn quit_via_prefix() {
+        let kb = KeyBindings::default();
+        let mut app = dummy_app();
+        handle_key(&mut app, &kb, ev(kb.prefix.code, kb.prefix.mods));
+        handle_key(&mut app, &kb, ev(KeyCode::Char('q'), KeyModifiers::NONE));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn zoom_via_prefix() {
+        let kb = KeyBindings::default();
+        let mut app = dummy_app();
+        handle_key(&mut app, &kb, ev(kb.prefix.code, kb.prefix.mods));
+        handle_key(&mut app, &kb, ev(KeyCode::Char('v'), KeyModifiers::NONE));
+        assert!(app.zoomed);
+    }
+
     #[test]
     fn plain_chars() {
-        assert_eq!(key_to_bytes(ev(KeyCode::Char('a'), KeyModifiers::NONE), false), Some(b"a".to_vec()));
-        assert_eq!(key_to_bytes(ev(KeyCode::Char('A'), KeyModifiers::SHIFT), false), Some(b"A".to_vec()));
-        assert_eq!(key_to_bytes(ev(KeyCode::Char('é'), KeyModifiers::NONE), false), Some("é".as_bytes().to_vec()));
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Char('a'), KeyModifiers::NONE), false),
+            Some(b"a".to_vec())
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Char('A'), KeyModifiers::SHIFT), false),
+            Some(b"A".to_vec())
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Char('é'), KeyModifiers::NONE), false),
+            Some("é".as_bytes().to_vec())
+        );
     }
 
     #[test]
     fn ctrl_and_alt_chars() {
-        assert_eq!(key_to_bytes(ev(KeyCode::Char('c'), KeyModifiers::CONTROL), false), Some(vec![0x03]));
-        assert_eq!(key_to_bytes(ev(KeyCode::Char('x'), KeyModifiers::ALT), false), Some(b"\x1bx".to_vec()));
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Char('c'), KeyModifiers::CONTROL), false),
+            Some(vec![0x03])
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Char('x'), KeyModifiers::ALT), false),
+            Some(b"\x1bx".to_vec())
+        );
+    }
+
+    #[test]
+    fn paste_raw_when_child_has_no_bracketed_paste() {
+        assert_eq!(paste_to_bytes("a\nb", false), b"a\nb".to_vec());
+    }
+
+    #[test]
+    fn paste_wrapped_when_child_enabled_bracketed_paste() {
+        assert_eq!(
+            paste_to_bytes("a\nb", true),
+            b"\x1b[200~a\nb\x1b[201~".to_vec()
+        );
+    }
+
+    /// The encoding decision reads the child's mode-2004 state from the
+    /// vendored vt100 screen — pin that dependency.
+    #[test]
+    fn bracketed_paste_flag_comes_from_child_output() {
+        let mut term = crate::term::Term::new(5, 20, 10);
+        assert!(!term.parser().screen().bracketed_paste());
+        term.feed(b"\x1b[?2004h");
+        assert!(term.parser().screen().bracketed_paste());
+        term.feed(b"\x1b[?2004l");
+        assert!(!term.parser().screen().bracketed_paste());
     }
 
     #[test]
     fn special_keys() {
-        assert_eq!(key_to_bytes(ev(KeyCode::Enter, KeyModifiers::NONE), false), Some(vec![b'\r']));
-        assert_eq!(key_to_bytes(ev(KeyCode::Backspace, KeyModifiers::NONE), false), Some(vec![0x7f]));
-        assert_eq!(key_to_bytes(ev(KeyCode::Up, KeyModifiers::NONE), false), Some(b"\x1b[A".to_vec()));
-        assert_eq!(key_to_bytes(ev(KeyCode::Up, KeyModifiers::NONE), true), Some(b"\x1bOA".to_vec()));
-        assert_eq!(key_to_bytes(ev(KeyCode::Up, KeyModifiers::CONTROL), false), Some(b"\x1b[1;5A".to_vec()));
-        assert_eq!(key_to_bytes(ev(KeyCode::PageDown, KeyModifiers::NONE), false), Some(b"\x1b[6~".to_vec()));
-        assert_eq!(key_to_bytes(ev(KeyCode::F(1), KeyModifiers::NONE), false), Some(b"\x1bOP".to_vec()));
-        assert_eq!(key_to_bytes(ev(KeyCode::BackTab, KeyModifiers::SHIFT), false), Some(b"\x1b[Z".to_vec()));
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Enter, KeyModifiers::NONE), false),
+            Some(vec![b'\r'])
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Backspace, KeyModifiers::NONE), false),
+            Some(vec![0x7f])
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Up, KeyModifiers::NONE), false),
+            Some(b"\x1b[A".to_vec())
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Up, KeyModifiers::NONE), true),
+            Some(b"\x1bOA".to_vec())
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::Up, KeyModifiers::CONTROL), false),
+            Some(b"\x1b[1;5A".to_vec())
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::PageDown, KeyModifiers::NONE), false),
+            Some(b"\x1b[6~".to_vec())
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::F(1), KeyModifiers::NONE), false),
+            Some(b"\x1bOP".to_vec())
+        );
+        assert_eq!(
+            key_to_bytes(ev(KeyCode::BackTab, KeyModifiers::SHIFT), false),
+            Some(b"\x1b[Z".to_vec())
+        );
     }
 }

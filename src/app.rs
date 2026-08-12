@@ -85,6 +85,11 @@ pub struct App {
     /// Set by the toggle-agent key binding; the main loop performs the
     /// actual spawn/hide (it also needs to update the IPC server state).
     pub toggle_agent_requested: bool,
+    /// True after the prefix key was pressed, until the next key press.
+    pub prefix_pending: bool,
+    /// Zoomed view: the focused pane takes the full screen while the other
+    /// keeps running in the background without a rect.
+    pub zoomed: bool,
     agent: AgentSpec,
 }
 
@@ -97,7 +102,11 @@ impl App {
         scrollback_limit: usize,
         agent: AgentSpec,
     ) -> App {
-        let focus = if left.is_some() { Focus::Left } else { Focus::Right };
+        let focus = if left.is_some() {
+            Focus::Left
+        } else {
+            Focus::Right
+        };
         App {
             left,
             right,
@@ -111,6 +120,8 @@ impl App {
             scrollback_limit,
             agent_hidden: false,
             toggle_agent_requested: false,
+            prefix_pending: false,
+            zoomed: false,
             agent,
         }
     }
@@ -122,11 +133,18 @@ impl App {
 
     /// Rects of the panes to draw/resize. A lone (or the only visible) pane
     /// gets the full screen; a hidden agent pane gets no rect and is left
-    /// untouched.
+    /// untouched. When zoomed, the focused pane takes the full screen and
+    /// the other keeps running in the background without a rect.
     pub fn rects(&self) -> (Option<Rect>, Option<Rect>) {
         let full = Rect::new(0, 0, self.term_size.0, self.term_size.1);
         match (self.left.is_some(), self.agent_visible()) {
             (true, true) => {
+                if self.zoomed {
+                    return match self.focus {
+                        Focus::Left => (Some(full), None),
+                        Focus::Right => (None, Some(full)),
+                    };
+                }
                 let (l, r) = pane_areas(self.term_size, self.layout, self.ratio);
                 (Some(l), Some(r))
             }
@@ -199,6 +217,15 @@ impl App {
         }
     }
 
+    /// Key-binding action: zoom the focused pane to the full screen
+    /// (toggle). A no-op unless both panes are visible.
+    pub fn toggle_zoom(&mut self) {
+        if self.left.is_some() && self.agent_visible() {
+            self.zoomed = !self.zoomed;
+            self.relayout();
+        }
+    }
+
     /// Poll children for exit.
     pub fn poll_alive(&mut self) {
         if let Some(p) = self.left.as_mut() {
@@ -227,6 +254,7 @@ impl App {
             closed.push(1);
         }
         if !closed.is_empty() {
+            self.zoomed = false;
             if self.left.is_none() && self.right.is_some() {
                 // Nothing left to hide behind.
                 self.agent_hidden = false;
@@ -331,7 +359,9 @@ impl App {
             self.relayout();
             "agent pane opened".to_string()
         } else {
-            let err = pane.spawn_error.unwrap_or_else(|| "unknown error".to_string());
+            let err = pane
+                .spawn_error
+                .unwrap_or_else(|| "unknown error".to_string());
             format!("failed to open agent pane: {err}")
         }
     }
@@ -353,7 +383,11 @@ mod tests {
     }
 
     fn live_pane() -> Pane {
-        Pane::spawn("live", &spec("/bin/cat"), Arc::new(Mutex::new(Term::new(5, 20, 10))))
+        Pane::spawn(
+            "live",
+            &spec("/bin/cat"),
+            Arc::new(Mutex::new(Term::new(5, 20, 10))),
+        )
     }
 
     fn dead_pane() -> Pane {
@@ -365,7 +399,12 @@ mod tests {
     }
 
     fn agent() -> AgentSpec {
-        AgentSpec { program: "/bin/cat".to_string(), args: vec![], env: vec![], cwd: None }
+        AgentSpec {
+            program: "/bin/cat".to_string(),
+            args: vec![],
+            env: vec![],
+            cwd: None,
+        }
     }
 
     #[test]
@@ -443,7 +482,14 @@ mod tests {
 
     #[test]
     fn toggle_agent_state_machine() {
-        let mut app = App::new(Some(live_pane()), None, Layout::Horizontal, 0.5, 10, agent());
+        let mut app = App::new(
+            Some(live_pane()),
+            None,
+            Layout::Horizontal,
+            0.5,
+            10,
+            agent(),
+        );
         app.set_term_size(80, 24);
 
         // Never started -> spawn and show.
@@ -458,10 +504,17 @@ mod tests {
         assert_eq!(app.toggle_agent(), "agent pane hidden");
         assert!(app.agent_hidden);
         assert!(app.right.as_ref().is_some_and(|p| p.alive));
-        assert!(app.right_term().is_some(), "hidden pane keeps its term handle");
+        assert!(
+            app.right_term().is_some(),
+            "hidden pane keeps its term handle"
+        );
         assert_eq!(app.focus, Focus::Left);
         let (la, ra) = app.rects();
-        assert_eq!(la, Some(Rect::new(0, 0, 80, 24)), "shell fullscreen while hidden");
+        assert_eq!(
+            la,
+            Some(Rect::new(0, 0, 80, 24)),
+            "shell fullscreen while hidden"
+        );
         assert!(ra.is_none(), "hidden agent gets no rect");
 
         // Hidden -> shown again.
@@ -478,9 +531,63 @@ mod tests {
     }
 
     #[test]
+    fn zoom_gives_focused_pane_fullscreen() {
+        let mut app = App::new(
+            Some(live_pane()),
+            Some(live_pane()),
+            Layout::Horizontal,
+            0.5,
+            10,
+            agent(),
+        );
+        app.set_term_size(80, 24);
+        let full = Rect::new(0, 0, 80, 24);
+
+        // Zoom the focused (left) pane: it takes the screen, the right pane
+        // keeps running without a rect.
+        app.toggle_zoom();
+        assert!(app.zoomed);
+        assert_eq!(app.rects(), (Some(full), None));
+
+        // Focus switch while zoomed: the fullscreen follows the focus.
+        app.focus = Focus::Right;
+        assert_eq!(app.rects(), (None, Some(full)));
+
+        // Unzoom restores the split.
+        app.toggle_zoom();
+        assert!(!app.zoomed);
+        let (la, ra) = app.rects();
+        assert!(la.is_some() && ra.is_some());
+        assert_ne!(la, Some(full));
+    }
+
+    #[test]
+    fn zoom_is_cleared_when_a_pane_closes() {
+        let mut app = App::new(
+            Some(dead_pane()),
+            Some(live_pane()),
+            Layout::Horizontal,
+            0.5,
+            10,
+            agent(),
+        );
+        app.set_term_size(80, 24);
+        app.toggle_zoom();
+        assert!(app.zoomed);
+        app.close_dead_panes();
+        assert!(!app.zoomed);
+    }
+
+    #[test]
     fn dead_agent_is_respawned_by_toggle() {
-        let mut app =
-            App::new(Some(live_pane()), Some(dead_pane()), Layout::Horizontal, 0.5, 10, agent());
+        let mut app = App::new(
+            Some(live_pane()),
+            Some(dead_pane()),
+            Layout::Horizontal,
+            0.5,
+            10,
+            agent(),
+        );
         app.set_term_size(80, 24);
         // The dead pane is cleaned up first (as the main loop would).
         let closed = app.close_dead_panes();
@@ -492,8 +599,14 @@ mod tests {
 
     #[test]
     fn hidden_agent_unhides_when_shell_dies() {
-        let mut app =
-            App::new(Some(dead_pane()), Some(live_pane()), Layout::Horizontal, 0.5, 10, agent());
+        let mut app = App::new(
+            Some(dead_pane()),
+            Some(live_pane()),
+            Layout::Horizontal,
+            0.5,
+            10,
+            agent(),
+        );
         app.set_term_size(80, 24);
         app.agent_hidden = true;
         let closed = app.close_dead_panes();

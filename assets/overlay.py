@@ -30,14 +30,16 @@ FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 # (label text, start time in seconds); each badge holds HOLD secs then fades.
 EVENTS = [
-    ("Ctrl+G  ·  focus toggle", 8.0),
-    ("Ctrl+T  ·  layout toggle", 13.7),
-    ("Ctrl+Left  ·  divider", 19.4),
-    ("Ctrl+Right  ·  divider", 23.1),
-    ("Ctrl+S  ·  scroll mode", 26.8),
-    ("Ctrl+N  ·  hide agent panel", 34.7),
-    ("Ctrl+N  ·  show agent panel", 37.8),
-    ("Ctrl+Q  ·  quit", 41.2),
+    ("Alt+Q g  ·  focus toggle", 9.8),
+    ("Alt+Q t  ·  layout toggle", 15.6),
+    ("Alt+Q Left  ·  divider", 20.8),
+    ("Alt+Q Right  ·  divider", 24.6),
+    ("Alt+Q s  ·  scroll mode", 28.5),
+    ("Alt+Q n  ·  hide agent panel", 36.7),
+    ("Alt+Q n  ·  show agent panel", 39.4),
+    ("Alt+Q v  ·  zoom pane", 42.4),
+    ("Alt+Q v  ·  unzoom", 45.4),
+    ("Alt+Q q  ·  quit", 47.9),
 ]
 HOLD, FADE = 2.0, 0.8
 

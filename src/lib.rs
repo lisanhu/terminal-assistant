@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod config;
+pub mod dbglog;
 pub mod input;
 pub mod ipc;
 pub mod pane;
@@ -75,7 +76,11 @@ enum PaneArg {
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Some(Cmd::ReadPane { lines, pane, socket }) => {
+        Some(Cmd::ReadPane {
+            lines,
+            pane,
+            socket,
+        }) => {
             let socket = socket
                 .or_else(|| std::env::var("TERM_ASSIST_SOCK").ok())
                 .or_else(ipc::discover_socket)
@@ -128,7 +133,8 @@ impl TermGuard {
         crossterm::execute!(
             std::io::stdout(),
             crossterm::terminal::EnterAlternateScreen,
-            crossterm::event::EnableMouseCapture
+            crossterm::event::EnableMouseCapture,
+            crossterm::event::EnableBracketedPaste
         )
         .context("enter alternate screen")?;
         Ok(TermGuard)
@@ -139,6 +145,7 @@ impl Drop for TermGuard {
     fn drop(&mut self) {
         let _ = crossterm::execute!(
             std::io::stdout(),
+            crossterm::event::DisableBracketedPaste,
             crossterm::event::DisableMouseCapture,
             crossterm::terminal::LeaveAlternateScreen
         );
@@ -232,11 +239,17 @@ fn tui_inner(config_path: PathBuf) -> Result<()> {
         cfg.layout,
         cfg.clamped_ratio(),
         cfg.scrollback_lines,
-        app::AgentSpec { program: agent_prog, args: agent_args, env, cwd },
+        app::AgentSpec {
+            program: agent_prog,
+            args: agent_args,
+            env,
+            cwd,
+        },
     );
     app.set_term_size(size.0, size.1);
 
     let _guard = TermGuard::enter()?;
+    dbglog::log("TUI enter: alternate screen + mouse capture (1000/1002/1003/1015/1006) + bracketed paste (2004) enabled");
     let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
     let mut terminal = ratatui::Terminal::new(backend).context("create terminal")?;
 
@@ -290,8 +303,11 @@ fn event_loop(
         terminal.draw(|f| ui::draw(f, app)).context("draw")?;
 
         if crossterm::event::poll(Duration::from_millis(16)).context("poll event")? {
-            match crossterm::event::read().context("read event")? {
+            let ev = crossterm::event::read().context("read event")?;
+            dbglog::log(&format!("event {ev:?}"));
+            match ev {
                 crossterm::event::Event::Key(k) => input::handle_key(app, &cfg.keybindings, k),
+                crossterm::event::Event::Paste(s) => input::handle_paste(app, &s),
                 crossterm::event::Event::Mouse(m) => input::handle_mouse(app, m),
                 crossterm::event::Event::Resize(w, h) => {
                     app.set_term_size(w, h);
@@ -312,7 +328,6 @@ fn event_loop(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -330,7 +345,10 @@ mod tests {
         assert_eq!(super::split_command("kimi"), ("kimi".to_string(), vec![]));
         assert_eq!(
             super::split_command("kimi --verbose  --x"),
-            ("kimi".to_string(), vec!["--verbose".to_string(), "--x".to_string()])
+            (
+                "kimi".to_string(),
+                vec!["--verbose".to_string(), "--x".to_string()]
+            )
         );
     }
 

@@ -20,11 +20,17 @@ pub fn user_skill_path() -> PathBuf {
     let home = directories::BaseDirs::new()
         .map(|b| b.home_dir().to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
-    home.join(".agents").join("skills").join("termassist").join("SKILL.md")
+    home.join(".agents")
+        .join("skills")
+        .join("termassist")
+        .join("SKILL.md")
 }
 
 pub fn project_skill_path() -> PathBuf {
-    PathBuf::from(".agents").join("skills").join("termassist").join("SKILL.md")
+    PathBuf::from(".agents")
+        .join("skills")
+        .join("termassist")
+        .join("SKILL.md")
 }
 
 pub fn is_installed() -> bool {
@@ -102,7 +108,8 @@ mod tests {
 
     #[test]
     fn install_to_custom_dir() {
-        let dir = std::env::temp_dir().join(format!("termassist-skill-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("termassist-skill-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = install_to(&dir).unwrap();
         assert!(path.is_file());

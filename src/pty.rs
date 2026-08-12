@@ -55,7 +55,10 @@ impl Pty {
             .slave
             .spawn_command(command_for(spec))
             .with_context(|| format!("failed to spawn `{}`", spec.program))?;
-        let writer = pair.master.take_writer().context("failed to get pty writer")?;
+        let writer = pair
+            .master
+            .take_writer()
+            .context("failed to get pty writer")?;
         Ok(Pty {
             master: pair.master,
             _slave: pair.slave,
@@ -67,7 +70,9 @@ impl Pty {
     /// A second handle for reading the child's output (used by the feeder
     /// thread).
     pub fn reader(&self) -> Result<Box<dyn Read + Send>> {
-        self.master.try_clone_reader().context("failed to clone pty reader")
+        self.master
+            .try_clone_reader()
+            .context("failed to clone pty reader")
     }
 
     pub fn write(&mut self, bytes: &[u8]) -> Result<()> {

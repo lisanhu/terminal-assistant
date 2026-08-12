@@ -16,15 +16,32 @@ pub fn draw(f: &mut Frame, app: &App) {
     }
     let (la, ra) = app.rects();
     if let (Some(area), Some(pane)) = (la, &app.left) {
-        draw_pane(f, area, pane, app.focus == Focus::Left, app.mode);
+        draw_pane(
+            f,
+            area,
+            pane,
+            app.focus == Focus::Left,
+            app.mode,
+            app.zoomed,
+        );
     }
     if let (Some(area), Some(pane)) = (ra, &app.right) {
-        draw_pane(f, area, pane, app.focus == Focus::Right, app.mode);
+        draw_pane(
+            f,
+            area,
+            pane,
+            app.focus == Focus::Right,
+            app.mode,
+            app.zoomed,
+        );
     }
 }
 
-fn draw_pane(f: &mut Frame, area: Rect, pane: &Pane, focused: bool, mode: Mode) {
+fn draw_pane(f: &mut Frame, area: Rect, pane: &Pane, focused: bool, mode: Mode, zoomed: bool) {
     let mut title = format!(" {} ", pane.name);
+    if zoomed {
+        title.push_str("(zoom) ");
+    }
     if focused && mode == Mode::Scroll {
         title.push_str(&format!("(scroll: {}) ", pane.scroll));
     } else if pane.scroll > 0 {
@@ -50,7 +67,9 @@ fn render_screen(f: &mut Frame, inner: Rect, pane: &Pane, show_cursor: bool) {
     if inner.width == 0 || inner.height == 0 {
         return;
     }
-    let Ok(mut term) = pane.term.lock() else { return };
+    let Ok(mut term) = pane.term.lock() else {
+        return;
+    };
     term.parser_mut().set_scrollback(pane.scroll);
     let screen = term.parser().screen();
 

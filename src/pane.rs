@@ -26,12 +26,14 @@ impl Pane {
             Ok(pty) => {
                 if let Ok(mut reader) = pty.reader() {
                     let term = Arc::clone(&term);
+                    let tag = format!("pane[{name}] <-");
                     std::thread::spawn(move || {
                         let mut buf = [0u8; 16 * 1024];
                         loop {
                             match reader.read(&mut buf) {
                                 Ok(0) | Err(_) => break,
                                 Ok(n) => {
+                                    crate::dbglog::log_bytes(&tag, &buf[..n]);
                                     if let Ok(mut t) = term.lock() {
                                         // Insurance against panics in the
                                         // terminal emulator on unusual byte
@@ -45,14 +47,28 @@ impl Pane {
                         }
                     });
                 }
-                Pane { name, term, pty: Some(pty), scroll: 0, alive: true, spawn_error: None }
+                Pane {
+                    name,
+                    term,
+                    pty: Some(pty),
+                    scroll: 0,
+                    alive: true,
+                    spawn_error: None,
+                }
             }
             Err(e) => {
                 let msg = format!("failed to spawn `{}`: {e:#}", spec.program);
                 if let Ok(mut t) = term.lock() {
                     t.feed(format!("[{msg}]\r\n").as_bytes());
                 }
-                Pane { name, term, pty: None, scroll: 0, alive: false, spawn_error: Some(msg) }
+                Pane {
+                    name,
+                    term,
+                    pty: None,
+                    scroll: 0,
+                    alive: false,
+                    spawn_error: Some(msg),
+                }
             }
         }
     }
@@ -60,6 +76,7 @@ impl Pane {
     /// Forward input bytes to the child.
     pub fn write_input(&mut self, bytes: &[u8]) {
         if let Some(pty) = self.pty.as_mut() {
+            crate::dbglog::log_bytes(&format!("pane[{}] ->", self.name), bytes);
             let _ = pty.write(bytes);
         }
     }
