@@ -42,7 +42,7 @@ alias ta=termassist
 
 ## 键位
 
-TUI 自身的键位都在 **prefix**（默认 `Alt+Q`，tmux 风格）之后：先按
+TUI 自身的键位都在 **prefix**（默认 `F9`，tmux 风格）之后：先按
 prefix，再按动作键。除此之外的所有输入都原样转发给当前焦点的 pane
 ——所以 `g`、`Ctrl+S` 这类键在 shell/agent 里照常可用。连按两次
 prefix 会把 prefix 键本身发给 pane。以下键位均可配置（见[配置](#配置)节），
@@ -50,13 +50,13 @@ prefix 会把 prefix 键本身发给 pane。以下键位均可配置（见[配�
 
 | 键 | 作用 |
 | --- | --- |
-| `Alt+Q` `g` | 在两个 pane 间切换焦点 |
-| `Alt+Q` `t` | 切换分屏方向（左右 ↔ 上下） |
-| `Alt+Q` `s` | 进入焦点 pane 的回滚模式 |
-| `Alt+Q` `←` / `Alt+Q` `→` | 移动分隔线（调整分屏比例） |
-| `Alt+Q` `n` | 开关 agent 面板（启动 / 隐藏 / 恢复） |
-| `Alt+Q` `v` | 把焦点 pane 放大到全屏（再按恢复；另一侧在后台继续运行） |
-| `Alt+Q` `q` | 退出 |
+| `F9` `g` | 在两个 pane 间切换焦点 |
+| `F9` `t` | 切换分屏方向（左右 ↔ 上下） |
+| `F9` `s` | 进入焦点 pane 的回滚模式 |
+| `F9` `←` / `F9` `→` | 移动分隔线（调整分屏比例） |
+| `F9` `n` | 开关 agent 面板（启动 / 隐藏 / 恢复） |
+| `F9` `v` | 把焦点 pane 放大到全屏（再按恢复；另一侧在后台继续运行） |
+| `F9` `q` | 退出 |
 
 **回滚模式：** `↑`/`k`、`↓`/`j`、`PageUp`/`PageDown`、`Home`/`g`（顶部）、
 `End`/`G`（底部）、`Esc`/`q`（退出）。滚到底部也会自动退出。
@@ -66,7 +66,7 @@ prefix 会把 prefix 键本身发给 pane。以下键位均可配置（见[配�
 
 ### agent 面板状态
 
-| agent 状态 | `Alt+Q` `n` 的效果 |
+| agent 状态 | `F9` `n` 的效果 |
 | --- | --- |
 | 从未启动 / 进程已退出 | 启动它（使用原始启动目录）并显示 |
 | 运行中且可见 | 隐藏；shell 独占全屏 |
@@ -81,7 +81,7 @@ prefix 会把 prefix 键本身发给 pane。以下键位均可配置（见[配�
   `termassist read-pane` 实现，封装成一份可移植的
   [skill](skills/termassist/SKILL.md)，适用于所有基于 skill 的 agent
   （kimi、Pi、Claude Code……），不依赖 MCP。
-- **可开关的 agent 面板**——`Alt+Q` `n` 启动 / 隐藏 / 恢复。隐藏是
+- **可开关的 agent 面板**——`F9` `n` 启动 / 隐藏 / 恢复。隐藏是
   *挂起，不是杀掉*：agent 在后台继续运行，同时你的 shell 独占全屏。
 - **合理的 pane 生命周期**——pane 内进程退出即关闭该 pane，存活的一侧
   自动占满全屏。两个 pane 都以你启动 `termassist` 时的目录作为工作目录。
@@ -152,7 +152,7 @@ ratio = 0.5               # 左/上 pane 的占比，0.1..=0.9
 scrollback_lines = 10000  # 每个 pane 的回滚行数上限
 
 [keybindings]
-prefix = "Alt+q"          # TUI 键位为 prefix 加下列键；连按两次 prefix 发送 prefix 本身
+prefix = "F9"             # TUI 键位为 prefix 加下列键；连按两次 prefix 发送 prefix 本身
 focus_toggle = "g"
 layout_toggle = "t"
 scroll_mode = "s"

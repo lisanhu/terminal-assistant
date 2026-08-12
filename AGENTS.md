@@ -69,7 +69,7 @@ when changing behavior.
   supported on Windows). **All platform `cfg` for IPC lives here.**
 - `input.rs` — key/mouse/paste routing and key-to-ANSI-bytes encoding
   (`key_to_bytes`, honoring application-cursor mode). TUI chrome actions sit
-  behind a configurable prefix key (default `Alt+Q`; `prefix_pending` in
+  behind a configurable prefix key (default `F9`; `prefix_pending` in
   `App`); prefix+prefix forwards the prefix key itself. `handle_paste` wraps
   the paste in bracketed-paste markers when the focused pane's child has
   enabled mode 2004 (read from the vt100 screen), raw text otherwise.
@@ -129,7 +129,7 @@ and are gated with `#[cfg(unix)]`.
   capture tests, `ui.rs` for rendering tests using `ratatui::backend::TestBackend`).
 - Unix-only behavior (PTY spawning, sockets) needs `#[cfg(unix)]` gates.
 - Manual smoke test: `cargo run` inside a real terminal, verify both panes
-  spawn, `Alt+Q n` toggles the agent, and `termassist read-pane` works from
+  spawn, `F9 n` toggles the agent, and `termassist read-pane` works from
   within a pane.
 
 ## Security considerations

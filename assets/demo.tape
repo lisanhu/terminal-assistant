@@ -13,10 +13,13 @@ Set TypingSpeed 100ms
 Set CursorBlink false
 
 # --- hidden prep ---
+# NOTE: vhs cannot emit function keys, so the recording pins
+# prefix = "Alt+q" below and presses Alt+Q as a stand-in for the real
+# default prefix (F9); the overlay badges show the true F9 bindings.
 Hide
 Type "export PATH=/home/lisanhu/mine/workspace/AI/terminal-assistant/target/release:$PATH"
 Enter
-Type `mkdir -p ~/.config/termassist && printf 'agent = "kimi"\n' > ~/.config/termassist/config.toml`
+Type `mkdir -p ~/.config/termassist && printf 'agent = "kimi"\n\n[keybindings]\nprefix = "Alt+q"\n' > ~/.config/termassist/config.toml`
 Enter
 Type "clear"
 Enter
@@ -38,7 +41,7 @@ Type "seq 1 60"
 Enter
 Sleep 2s
 
-# --- Alt+Q g: toggle focus ---
+# --- F9 g: toggle focus ---
 Alt+Q
 Type "g"
 Sleep 3s
@@ -46,7 +49,7 @@ Alt+Q
 Type "g"
 Sleep 2.5s
 
-# --- Alt+Q t: toggle split direction ---
+# --- F9 t: toggle split direction ---
 Alt+Q
 Type "t"
 Sleep 3s
@@ -54,7 +57,7 @@ Alt+Q
 Type "t"
 Sleep 2.5s
 
-# --- Alt+Q Left / Alt+Q Right: move the divider ---
+# --- F9 Left / F9 Right: move the divider ---
 Alt+Q
 Left
 Sleep 1s
@@ -68,7 +71,7 @@ Alt+Q
 Right
 Sleep 2.5s
 
-# --- Alt+Q s: scroll mode ---
+# --- F9 s: scroll mode ---
 Alt+Q
 Type "s"
 Sleep 2s
@@ -79,7 +82,7 @@ Sleep 2s
 Escape
 Sleep 2s
 
-# --- Alt+Q n: hide / show agent panel ---
+# --- F9 n: hide / show agent panel ---
 Alt+Q
 Type "n"
 Sleep 3s
@@ -87,7 +90,7 @@ Alt+Q
 Type "n"
 Sleep 3s
 
-# --- Alt+Q v: zoom the focused pane fullscreen / restore ---
+# --- F9 v: zoom the focused pane fullscreen / restore ---
 Alt+Q
 Type "v"
 Sleep 3s
@@ -95,7 +98,7 @@ Alt+Q
 Type "v"
 Sleep 2.5s
 
-# --- Alt+Q q: quit ---
+# --- F9 q: quit ---
 Alt+Q
 Type "q"
 Sleep 2s

@@ -44,7 +44,7 @@ alias ta=termassist
 
 ## Key bindings
 
-TUI keys live behind a **prefix** (`Alt+Q` by default, tmux-style): press
+TUI keys live behind a **prefix** (`F9` by default, tmux-style): press
 the prefix, then the action key. Everything that is not a prefixed TUI
 binding is forwarded to the focused pane — so plain keys like `g` or `Ctrl+S`
 reach your shell/agent untouched. Pressing the prefix twice sends the prefix
@@ -53,13 +53,13 @@ key itself to the pane. All bindings are configurable (see
 
 | Keys | Action |
 | --- | --- |
-| `Alt+Q` `g` | Toggle focus between panes |
-| `Alt+Q` `t` | Toggle split direction (left/right ↔ top/bottom) |
-| `Alt+Q` `s` | Enter scroll mode for the focused pane |
-| `Alt+Q` `←` / `Alt+Q` `→` | Move the divider (resize split ratio) |
-| `Alt+Q` `n` | Toggle the agent panel (spawn / hide / show) |
-| `Alt+Q` `v` | Zoom the focused pane to fullscreen (toggle; the other pane keeps running in the background) |
-| `Alt+Q` `q` | Quit |
+| `F9` `g` | Toggle focus between panes |
+| `F9` `t` | Toggle split direction (left/right ↔ top/bottom) |
+| `F9` `s` | Enter scroll mode for the focused pane |
+| `F9` `←` / `F9` `→` | Move the divider (resize split ratio) |
+| `F9` `n` | Toggle the agent panel (spawn / hide / show) |
+| `F9` `v` | Zoom the focused pane to fullscreen (toggle; the other pane keeps running in the background) |
+| `F9` `q` | Quit |
 
 **Scroll mode:** `↑`/`k`, `↓`/`j`, `PageUp`/`PageDown`, `Home`/`g` (top),
 `End`/`G` (bottom), `Esc`/`q` (exit). Reaching the bottom also exits.
@@ -71,7 +71,7 @@ both PTYs.
 
 ### Agent panel states
 
-| Agent state | `Alt+Q` `n` |
+| Agent state | `F9` `n` |
 | --- | --- |
 | Never started / process exited | Spawn it (in the original startup cwd) and show |
 | Running and visible | Hide it; the shell goes fullscreen |
@@ -86,7 +86,7 @@ both PTYs.
 - **Agent sees your terminal** — via `termassist read-pane` over a local
   socket, packaged as a portable [skill](skills/termassist/SKILL.md) that
   works with skill-based agents (kimi, Pi, Claude Code, …); no MCP required.
-- **Toggleable agent panel** — `Alt+Q` `n` spawns / hides / shows the agent.
+- **Toggleable agent panel** — `F9` `n` spawns / hides / shows the agent.
   Hiding is a *suspend, not a kill*: the agent keeps running in the
   background while your shell goes fullscreen.
 - **Sane pane lifecycle** — when a pane's process exits, the pane closes and
@@ -162,7 +162,7 @@ ratio = 0.5               # fraction for the left/top pane, 0.1..=0.9
 scrollback_lines = 10000  # per pane
 
 [keybindings]
-prefix = "Alt+q"          # TUI keys are prefix, then the key below; prefix+prefix sends the prefix itself
+prefix = "F9"             # TUI keys are prefix, then the key below; prefix+prefix sends the prefix itself
 focus_toggle = "g"
 layout_toggle = "t"
 scroll_mode = "s"

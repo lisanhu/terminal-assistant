@@ -130,7 +130,7 @@ impl Default for KeyBindings {
     fn default() -> Self {
         let plain = |code| KeyBind::new(KeyModifiers::empty(), code);
         KeyBindings {
-            prefix: KeyBind::new(KeyModifiers::ALT, KeyCode::Char('q')),
+            prefix: KeyBind::new(KeyModifiers::empty(), KeyCode::F(9)),
             focus_toggle: plain(KeyCode::Char('g')),
             layout_toggle: plain(KeyCode::Char('t')),
             scroll_mode: plain(KeyCode::Char('s')),
@@ -276,7 +276,7 @@ ratio = 0.5               # fraction for the left/top pane, 0.1..=0.9
 scrollback_lines = 10000  # per pane
 
 [keybindings]
-prefix = "Alt+q"          # TUI keys are prefix, then the key below; prefix+prefix sends the prefix itself
+prefix = "F9"             # TUI keys are prefix, then the key below; prefix+prefix sends the prefix itself
 focus_toggle = "g"
 layout_toggle = "t"
 scroll_mode = "s"
@@ -434,7 +434,7 @@ mod tests {
         assert_eq!(c.scrollback_lines, 10_000);
         assert_eq!(
             c.keybindings.prefix,
-            KeyBind::new(KeyModifiers::ALT, KeyCode::Char('q'))
+            KeyBind::new(KeyModifiers::empty(), KeyCode::F(9))
         );
         assert_eq!(
             c.keybindings.focus_toggle,
@@ -575,7 +575,7 @@ quit = "F12"
         assert_eq!(c.scrollback_lines, 10_000);
         assert_eq!(
             c.keybindings.prefix,
-            KeyBind::new(KeyModifiers::ALT, KeyCode::Char('q'))
+            KeyBind::new(KeyModifiers::empty(), KeyCode::F(9))
         );
         assert_eq!(
             c.keybindings.toggle_agent,
