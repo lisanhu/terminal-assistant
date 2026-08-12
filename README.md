@@ -117,7 +117,9 @@ a config. Change the agent later anytime by editing `agent` in the config
 file.
 
 ```sh
-termassist                 # start the split TUI (left: $SHELL, right: kimi)
+termassist                 # first run: wizard asks for the agent command, writes
+                           # the config and exits; run again to enter the split TUI
+                           # (left: $SHELL, right: your configured agent)
 termassist --config ./dev-config.toml   # use a different config file
 termassist read-pane       # print the user pane's screen + scrollback
 termassist read-pane --lines 50
@@ -144,10 +146,10 @@ shown in wizard messages). Handy for development: point it at a repo-local
 ## Configuration
 
 TOML at the per-OS config dir (`~/.config/termassist/config.toml` on Linux).
-All fields are optional; defaults shown:
+Only `agent` is required; every other field is optional (defaults shown):
 
 ```toml
-agent = "kimi"            # command for the agent pane (args allowed)
+agent = "kimi"            # command for the agent pane (args allowed) — required
 # shell = "/bin/zsh"      # default: $SHELL (Unix) / %COMSPEC% or powershell (Windows)
 layout = "horizontal"     # "horizontal" (left/right) or "vertical" (top/bottom)
 ratio = 0.5               # fraction for the left/top pane, 0.1..=0.9
@@ -165,8 +167,13 @@ quit = "Ctrl+q"
 
 Key syntax: `Ctrl+`/`Alt+`/`Shift+` modifiers plus a key name (`a`–`z`,
 `Enter`, `Esc`, `Tab`, `Backspace`, `Space`, arrows, `Home`, `End`,
-`PageUp`, `PageDown`, `Delete`, `Insert`, `F1`–`F12`). An invalid config
-falls back to defaults with a warning on stderr.
+`PageUp`, `PageDown`, `Delete`, `Insert`, `F1`–`F12`).
+
+An invalid config file (syntax error, missing `agent`, wrong types) is
+reported with details and never silently ignored: interactive runs offer
+the setup wizard to rewrite it (valid input overwrites the file and exits
+0; empty input exits non-zero), while non-interactive runs exit with a
+non-zero status.
 
 ## How it works
 

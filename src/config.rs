@@ -137,35 +137,101 @@ impl Default for KeyBindings {
     }
 }
 
-/// Top-level configuration (TOML).
+/// Top-level configuration (TOML). `agent` is required; every other field
+/// falls back to its default when omitted.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
 pub struct Config {
-    /// Command used to launch the agent pane (default `kimi`). May contain
-    /// arguments, split on whitespace.
+    /// Command used to launch the agent pane. May contain arguments, split
+    /// on whitespace. **Required** in the config file.
     pub agent: String,
     /// Shell for the user pane. Defaults to `$SHELL` (Unix) or
     /// `%COMSPEC%`/`powershell.exe` (Windows).
+    #[serde(default)]
     pub shell: Option<String>,
     /// Initial split direction.
+    #[serde(default = "default_layout")]
     pub layout: Layout,
     /// Initial split ratio for the left (or top) pane, 0.1..=0.9.
+    #[serde(default = "default_ratio")]
     pub ratio: f32,
     /// Maximum scrollback lines kept per pane.
+    #[serde(default = "default_scrollback_lines")]
     pub scrollback_lines: usize,
+    #[serde(default)]
     pub keybindings: KeyBindings,
 }
 
+fn default_layout() -> Layout {
+    Layout::Horizontal
+}
+
+fn default_ratio() -> f32 {
+    0.5
+}
+
+fn default_scrollback_lines() -> usize {
+    10_000
+}
+
 impl Default for Config {
+    /// Internal fallback for the "no config file + non-interactive" case.
     fn default() -> Self {
         Config {
             agent: "kimi".to_string(),
             shell: None,
-            layout: Layout::Horizontal,
-            ratio: 0.5,
-            scrollback_lines: 10_000,
+            layout: default_layout(),
+            ratio: default_ratio(),
+            scrollback_lines: default_scrollback_lines(),
             keybindings: KeyBindings::default(),
         }
+    }
+}
+
+/// Result of reading + parsing the config file.
+#[derive(Debug)]
+pub enum ConfigRead {
+    /// File exists and parsed.
+    Loaded(Config),
+    /// No config file.
+    Missing,
+    /// File exists but cannot be read or parsed (details attached).
+    Invalid(String),
+}
+
+/// Read and parse the config at `path` without any fallback policy.
+pub fn read_config(path: &Path) -> ConfigRead {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return ConfigRead::Missing,
+        Err(e) => return ConfigRead::Invalid(format!("cannot read: {e}")),
+    };
+    match toml::from_str(&text) {
+        Ok(c) => ConfigRead::Loaded(c),
+        Err(e) => ConfigRead::Invalid(e.to_string()),
+    }
+}
+
+/// What to do about a `ConfigRead` outcome (pure decision, unit-testable).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigAction {
+    /// Use the loaded config, or the internal defaults (missing file,
+    /// non-interactive).
+    Use,
+    /// Missing config, interactive: run the first-run wizard.
+    Wizard,
+    /// Invalid config, interactive: report it and run the wizard to rewrite.
+    InvalidWizard,
+    /// Invalid config, non-interactive: report it and exit non-zero.
+    InvalidAbort,
+}
+
+pub fn config_action(read: &ConfigRead, interactive: bool) -> ConfigAction {
+    match (read, interactive) {
+        (ConfigRead::Loaded(_), _) => ConfigAction::Use,
+        (ConfigRead::Missing, true) => ConfigAction::Wizard,
+        (ConfigRead::Missing, false) => ConfigAction::Use,
+        (ConfigRead::Invalid(_), true) => ConfigAction::InvalidWizard,
+        (ConfigRead::Invalid(_), false) => ConfigAction::InvalidAbort,
     }
 }
 
@@ -175,30 +241,6 @@ impl Config {
         directories::ProjectDirs::from("", "", "termassist")
             .map(|p| p.config_dir().join("config.toml"))
             .unwrap_or_else(|| PathBuf::from("config.toml"))
-    }
-
-    /// Load the config file, falling back to defaults (with a warning) on any
-    /// error.
-    pub fn load() -> Config {
-        Self::load_from(&Self::default_path())
-    }
-
-    pub fn load_from(path: &std::path::Path) -> Config {
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Config::default(),
-            Err(e) => {
-                eprintln!("termassist: cannot read {}: {e}; using defaults", path.display());
-                return Config::default();
-            }
-        };
-        match toml::from_str(&text) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("termassist: invalid config {}: {e}; using defaults", path.display());
-                Config::default()
-            }
-        }
     }
 
     /// Shell to launch in the user pane.
@@ -212,14 +254,8 @@ impl Config {
 }
 
 // ---------------------------------------------------------------------------
-// First-run wizard
+// First-run / repair wizard
 // ---------------------------------------------------------------------------
-
-/// Pure decision: the wizard runs only when there is no config file yet and
-/// both stdin and stdout are terminals.
-pub fn should_run_wizard(config_exists: bool, interactive: bool) -> bool {
-    !config_exists && interactive
-}
 
 /// Full default config file with `agent` substituted in.
 pub fn default_config_toml(agent: &str) -> String {
@@ -262,14 +298,7 @@ pub fn write_default_config(path: &Path, agent: &str) -> Result<()> {
 pub fn prompt_agent_command(
     input: &mut impl std::io::BufRead,
     output: &mut impl std::io::Write,
-    config_path: &Path,
 ) -> Option<String> {
-    writeln!(
-        output,
-        "termassist: first run — no config file at {}.",
-        config_path.display()
-    )
-    .ok()?;
     write!(output, "Agent command for the agent pane (arguments allowed): ").ok()?;
     output.flush().ok()?;
     let mut line = String::new();
@@ -283,24 +312,52 @@ pub fn wizard_echo(agent: &str, path: &Path) -> String {
     format!("agent = \"{agent}\"\ntermassist: config written to {}", path.display())
 }
 
-/// Interactive first-run wizard: when there is no config file and stdin /
-/// stdout are terminals, ask for the agent command and exit — the wizard
-/// never enters the TUI. A valid command writes the default config, echoes
-/// it, and exits 0; empty input / EOF / write failure print a hint and exit
-/// with a non-zero status (all still before any raw mode / TUI setup).
-/// Does nothing when the wizard does not apply (config exists, or
-/// non-interactive) — the caller then loads the config the usual way.
-pub fn first_run_wizard(path: &Path) {
+/// Resolve the effective config for a TUI start. Decides between using the
+/// file (or internal defaults) and running the plain-text wizard — the
+/// wizard never enters the TUI: a valid command writes the default config
+/// (overwriting an invalid file), echoes it, and exits 0; empty input /
+/// EOF / write failure print a hint and exit non-zero. An invalid config
+/// file in a non-interactive session is a hard error (exit non-zero), never
+/// a silent fallback.
+pub fn resolve_config_or_wizard(path: &Path) -> Config {
     let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    if !should_run_wizard(path.exists(), interactive) {
-        return;
+    let read = read_config(path);
+    match config_action(&read, interactive) {
+        ConfigAction::Use => match read {
+            ConfigRead::Loaded(c) => c,
+            _ => Config::default(),
+        },
+        ConfigAction::Wizard => wizard_prompt_and_exit(path, None),
+        ConfigAction::InvalidWizard => {
+            let ConfigRead::Invalid(err) = &read else {
+                unreachable!("checked by config_action")
+            };
+            wizard_prompt_and_exit(path, Some(err))
+        }
+        ConfigAction::InvalidAbort => {
+            let ConfigRead::Invalid(err) = &read else {
+                unreachable!("checked by config_action")
+            };
+            eprintln!("termassist: invalid config at {}: {err}", path.display());
+            eprintln!("  Fix or delete it and run again (interactive runs offer a repair wizard).");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Shared tail of the wizard: prompt for the agent command, write the
+/// default config, echo, and exit. Never returns.
+fn wizard_prompt_and_exit(path: &Path, error: Option<&str>) -> ! {
+    match error {
+        Some(err) => {
+            println!("termassist: invalid config at {}: {err}", path.display());
+            println!("  Starting the setup wizard to rewrite it.");
+        }
+        None => println!("termassist: first run — no config file at {}.", path.display()),
     }
 
-    let agent = match prompt_agent_command(
-        &mut std::io::stdin().lock(),
-        &mut std::io::stdout().lock(),
-        path,
-    ) {
+    let agent = match prompt_agent_command(&mut std::io::stdin().lock(), &mut std::io::stdout().lock())
+    {
         Some(agent) => agent,
         None => {
             println!("termassist: no agent command entered — agent is not configured.");
@@ -328,8 +385,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_on_empty_toml() {
-        let c: Config = toml::from_str("").unwrap();
+    fn missing_agent_is_a_parse_error() {
+        // `agent` is required; every other field keeps its default.
+        let err = toml::from_str::<Config>("").unwrap_err().to_string();
+        assert!(err.contains("agent"), "{err}");
+        let err = toml::from_str::<Config>("ratio = 0.3\n").unwrap_err().to_string();
+        assert!(err.contains("agent"), "{err}");
+        let err = toml::from_str::<Config>("agent = 42\n").unwrap_err().to_string();
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn everything_but_agent_defaults() {
+        let c: Config = toml::from_str("agent = \"kimi\"\n").unwrap();
         assert_eq!(c.agent, "kimi");
         assert_eq!(c.shell, None);
         assert_eq!(c.layout, Layout::Horizontal);
@@ -393,10 +461,11 @@ quit = "Ctrl+F12"
 
     #[test]
     fn partial_config_keeps_defaults() {
-        let c: Config = toml::from_str("ratio = 0.3\n").unwrap();
+        let c: Config = toml::from_str("agent = \"codex\"\nratio = 0.3\n").unwrap();
+        assert_eq!(c.agent, "codex");
         assert!((c.ratio - 0.3).abs() < f32::EPSILON);
-        assert_eq!(c.agent, "kimi");
         assert_eq!(c.scrollback_lines, 10_000);
+        assert_eq!(c.layout, Layout::Horizontal);
     }
 
     #[test]
@@ -430,11 +499,10 @@ quit = "Ctrl+F12"
     fn prompt_agent_command_takes_input_verbatim() {
         let mut input = std::io::Cursor::new("claude --verbose\n");
         let mut output = Vec::new();
-        let agent =
-            prompt_agent_command(&mut input, &mut output, Path::new("/tmp/x/config.toml"));
+        let agent = prompt_agent_command(&mut input, &mut output);
         assert_eq!(agent, Some("claude --verbose".to_string()));
         let shown = String::from_utf8(output).unwrap();
-        assert!(shown.contains("first run"));
+        assert!(shown.contains("Agent command"));
     }
 
     #[test]
@@ -442,8 +510,7 @@ quit = "Ctrl+F12"
         for input_text in ["\n", "  \t \n", ""] {
             let mut input = std::io::Cursor::new(input_text);
             let mut output = Vec::new();
-            let agent =
-                prompt_agent_command(&mut input, &mut output, Path::new("/tmp/x/config.toml"));
+            let agent = prompt_agent_command(&mut input, &mut output);
             assert_eq!(agent, None, "input {input_text:?} should mean 'not configured'");
         }
     }
@@ -481,10 +548,56 @@ quit = "Ctrl+F12"
     }
 
     #[test]
-    fn wizard_decision_truth_table() {
-        assert!(should_run_wizard(false, true));
-        assert!(!should_run_wizard(true, true), "existing config: stay silent");
-        assert!(!should_run_wizard(false, false), "non-interactive: skip");
-        assert!(!should_run_wizard(true, false));
+    fn read_config_distinguishes_missing_loaded_invalid() {
+        let base = std::env::temp_dir().join(format!("termassist-read-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        let missing = base.join("nope.toml");
+        assert!(matches!(read_config(&missing), ConfigRead::Missing));
+
+        let good = base.join("good.toml");
+        std::fs::write(&good, "agent = \"kimi\"\n").unwrap();
+        match read_config(&good) {
+            ConfigRead::Loaded(c) => assert_eq!(c.agent, "kimi"),
+            other => panic!("expected Loaded, got {other:?}"),
+        }
+
+        let bad = base.join("bad.toml");
+        std::fs::write(&bad, "ratio = 0.3\n").unwrap(); // missing required agent
+        match read_config(&bad) {
+            ConfigRead::Invalid(err) => assert!(err.contains("agent"), "{err}"),
+            other => panic!("expected Invalid, got {other:?}"),
+        }
+        std::fs::write(&bad, "this is not = [ toml").unwrap();
+        assert!(matches!(read_config(&bad), ConfigRead::Invalid(_)));
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn config_action_truth_table() {
+        let loaded = read_config_loaded();
+        let missing = ConfigRead::Missing;
+        let invalid = ConfigRead::Invalid("boom".to_string());
+
+        assert_eq!(config_action(&loaded, true), ConfigAction::Use);
+        assert_eq!(config_action(&loaded, false), ConfigAction::Use);
+        assert_eq!(config_action(&missing, true), ConfigAction::Wizard);
+        assert_eq!(config_action(&missing, false), ConfigAction::Use);
+        assert_eq!(config_action(&invalid, true), ConfigAction::InvalidWizard);
+        assert_eq!(config_action(&invalid, false), ConfigAction::InvalidAbort);
+    }
+
+    fn read_config_loaded() -> ConfigRead {
+        ConfigRead::Loaded(Config::default())
+    }
+
+    #[test]
+    fn config_default_still_works_for_internal_fallback() {
+        let c = Config::default();
+        assert!(!c.agent.is_empty());
+        assert_eq!(c.layout, Layout::Horizontal);
+        assert!((c.ratio - 0.5).abs() < f32::EPSILON);
     }
 }

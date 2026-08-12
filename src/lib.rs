@@ -161,11 +161,11 @@ fn run_tui(config_path: PathBuf) {
 }
 
 fn tui_inner(config_path: PathBuf) -> Result<()> {
-    // First-run wizard (no config file + interactive): asks for the agent
-    // command, writes the config and exits without entering the TUI. Runs
-    // before the skill prompt; a no-op when a config file exists.
-    config::first_run_wizard(&config_path);
-    let cfg = config::Config::load_from(&config_path);
+    // Config resolution, including the first-run / repair wizard: a missing
+    // config in an interactive session asks for the agent command and exits
+    // without entering the TUI; an invalid config is reported and either
+    // repaired via the wizard (interactive) or a hard error (non-interactive).
+    let cfg = config::resolve_config_or_wizard(&config_path);
     skill::pre_tui_check();
 
     // Panes (spawned in cooked mode so spawn errors can still be reported

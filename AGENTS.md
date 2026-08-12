@@ -9,9 +9,11 @@ first run (no config file) a plain-text wizard asks for the agent command
 (arguments allowed; empty input or EOF aborts with a non-zero exit and no
 config written), writes the default config, and exits 0 without entering
 the TUI — the next start finds the config and goes straight to the TUI;
-non-interactive runs skip it. `--config <path>` overrides the config file
-location everywhere (wizard, loading, messages); `./dev-config.toml` is
-git-ignored for local development.
+non-interactive runs skip it. An existing but invalid config file is
+reported and repaired through the same wizard (interactive) or aborts
+non-zero (non-interactive) — never silently ignored. `--config <path>`
+overrides the config file location everywhere (wizard, loading, messages);
+`./dev-config.toml` is git-ignored for local development.
 
 Architecture (single process, ratatui event loop):
 
@@ -68,12 +70,13 @@ when changing behavior.
   (`key_to_bytes`, honoring application-cursor mode).
 - `ui.rs` — ratatui rendering: borders, focus styling, cell-by-cell vt100 →
   buffer mapping (wide chars occupy two columns).
-- `config.rs` — TOML config (`~/.config/termassist/config.toml` on Linux),
-  defaults, `KeyBind` parsing (`"Ctrl+g"`, `"Alt+x"`, `"F5"`, …), and the
-  first-run wizard (`prompt_agent_command`, `first_run_wizard`; plain
-  stdin/stdout, skipped when a config exists or the session is
-  non-interactive). Invalid
-  config falls back to defaults with a stderr warning.
+- `config.rs` — TOML config (`~/.config/termassist/config.toml` on Linux).
+  `agent` is required in the file; other fields default individually.
+  `read_config` + `config_action` decide between using the file, running
+  the plain-text wizard (missing config, or invalid config interactively —
+  rewrites the file and exits 0), or a hard non-zero exit (invalid config
+  non-interactively). `KeyBind` parsing (`"Ctrl+g"`, `"Alt+x"`, `"F5"`, …).
+  Entry point: `resolve_config_or_wizard`.
 
 Cross-platform rule: platform-specific code is confined to `src/pty.rs` and
 `src/ipc.rs`; everything else must stay platform-independent. Built and
@@ -84,7 +87,7 @@ tested on Linux; macOS/Windows compile but are untested.
 ```sh
 cargo build            # debug build
 cargo build --release  # binary at target/release/termassist
-cargo test             # unit tests, all in-module (40 tests as of writing)
+cargo test             # unit tests, all in-module (43 tests as of writing)
 cargo clippy           # lint
 cargo fmt              # format
 ```

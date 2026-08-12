@@ -107,7 +107,8 @@ agent pane 里运行的 agent 启动命令（可带参数）。输入有效命�
 随时可以编辑配置文件里的 `agent` 字段更换 agent。
 
 ```sh
-termassist                 # 启动分屏 TUI（左：$SHELL，右：kimi）
+termassist                 # 首次运行：向导询问 agent 命令、写配置后退出；
+                           # 再跑一次进入分屏 TUI（左：$SHELL，右：你配置的 agent）
 termassist --config ./dev-config.toml   # 使用另一个配置文件
 termassist read-pane       # 打印用户 pane 的屏幕 + 回滚历史
 termassist read-pane --lines 50
@@ -134,10 +135,11 @@ termassist install-skill --scope user
 ## 配置
 
 TOML 文件，位于各操作系统的配置目录（Linux 下为
-`~/.config/termassist/config.toml`）。所有字段均可省略，以下为默认值：
+`~/.config/termassist/config.toml`）。只有 `agent` 是必填项，其余字段
+均可省略（以下为默认值）：
 
 ```toml
-agent = "kimi"            # agent pane 的启动命令（可带参数）
+agent = "kimi"            # agent pane 的启动命令（可带参数）——必填
 # shell = "/bin/zsh"      # 默认：$SHELL（Unix）/ %COMSPEC% 或 powershell（Windows）
 layout = "horizontal"     # "horizontal"（左右）或 "vertical"（上下）
 ratio = 0.5               # 左/上 pane 的占比，0.1..=0.9
@@ -155,8 +157,11 @@ quit = "Ctrl+q"
 
 键位语法：`Ctrl+`/`Alt+`/`Shift+` 修饰键加键名（`a`–`z`、`Enter`、`Esc`、
 `Tab`、`Backspace`、`Space`、方向键、`Home`、`End`、`PageUp`、`PageDown`、
-`Delete`、`Insert`、`F1`–`F12`）。配置解析失败会回退到全默认值，并在
-stderr 打印警告。
+`Delete`、`Insert`、`F1`–`F12`）。
+
+配置文件无效（语法错误、缺少 `agent`、类型不对）时会打印错误详情，
+绝不静默回退默认值：交互式运行会启动向导重写配置（有效输入覆盖写入
+并以 0 退出；空输入以非零退出）；非交互运行直接以非零状态码退出。
 
 ## 工作原理
 
