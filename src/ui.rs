@@ -38,10 +38,13 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn draw_pane(f: &mut Frame, area: Rect, pane: &Pane, focused: bool, mode: Mode, zoomed: bool) {
-    let mut title = format!(" {} ", pane.name);
+    let show_cursor = focused && mode == Mode::Normal && pane.scroll == 0;
     if zoomed {
-        title.push_str("(zoom) ");
+        render_screen(f, area, pane, show_cursor);
+        return;
     }
+
+    let mut title = format!(" {} ", pane.name);
     if focused && mode == Mode::Scroll {
         title.push_str(&format!("(scroll: {}) ", pane.scroll));
     } else if pane.scroll > 0 {
@@ -59,7 +62,6 @@ fn draw_pane(f: &mut Frame, area: Rect, pane: &Pane, focused: bool, mode: Mode, 
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let show_cursor = focused && mode == Mode::Normal && pane.scroll == 0;
     render_screen(f, inner, pane, show_cursor);
 }
 
@@ -177,5 +179,24 @@ mod tests {
         for (i, ch) in "hello".chars().enumerate() {
             assert_eq!(buf[(i as u16, 0)].symbol(), ch.to_string());
         }
+    }
+
+    #[test]
+    fn zoomed_view_uses_the_full_area_without_a_border() {
+        let term = Arc::new(Mutex::new(Term::new(5, 20, 100)));
+        term.lock().unwrap().feed(b"hello");
+        let pane = Pane::dummy(term);
+
+        let backend = TestBackend::new(20, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| draw_pane(f, Rect::new(0, 0, 20, 5), &pane, true, Mode::Normal, true))
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        assert_eq!(buf[(0, 0)].symbol(), "h");
+        assert_eq!(buf[(1, 0)].symbol(), "e");
+        assert_eq!(buf[(19, 0)].symbol(), " ");
+        assert_eq!(buf[(0, 4)].symbol(), " ");
     }
 }

@@ -25,9 +25,10 @@ copy-pasting anything.
 
 ![termassist demo: all key bindings](assets/demo.gif)
 
-All key bindings: focus toggle, layout toggle, divider move,
-scroll mode, agent panel hide/show, pane zoom, quit. (Source: `assets/demo.tape`,
-rendered with [VHS](https://github.com/charmbracelet/vhs).)
+Focus toggle, layout toggle, divider move, scroll mode, agent panel
+hide/show, native selection, borderless view, and quit. (Source:
+`assets/demo.tape`, rendered with
+[VHS](https://github.com/charmbracelet/vhs).)
 
 ## Install
 
@@ -58,16 +59,19 @@ key itself to the pane. All bindings are configurable (see
 | `F9` `s` | Enter scroll mode for the focused pane |
 | `F9` `←` / `F9` `→` | Move the divider (resize split ratio) |
 | `F9` `n` | Toggle the agent panel (spawn / hide / show) |
-| `F9` `v` | Zoom the focused pane to fullscreen (toggle; the other pane keeps running in the background) |
+| `F9` `v` | View the focused pane fullscreen without borders (toggle; the other pane keeps running in the background) |
 | `F9` `q` | Quit |
 
 **Scroll mode:** `↑`/`k`, `↓`/`j`, `PageUp`/`PageDown`, `Home`/`g` (top),
 `End`/`G` (bottom), `Esc`/`q` (exit). Reaching the bottom also exits.
 
-**Mouse:** click a pane to focus it, drag the divider to resize,
-wheel-scroll a pane to browse its history. The focused pane has a
-highlighted border. Resizing the terminal re-layouts the panes and resizes
-both PTYs.
+**Mouse:** click a pane to focus it, drag the divider to resize, and
+wheel-scroll a pane to browse its history. To select text with the outer
+terminal, hold `Shift` while left-dragging (supported by most terminal
+emulators), then use the terminal's normal copy command. `F9` `v` opens a
+borderless fullscreen view so multi-line selections do not include pane
+borders. The focused pane has a highlighted border outside fullscreen view.
+Resizing the terminal re-layouts the panes and resizes both PTYs.
 
 ### Agent panel states
 
@@ -96,9 +100,10 @@ both PTYs.
   pane talks to the running instance instead of nesting a new TUI: it opens
   or focuses the agent panel and exits.
 - **Keyboard & mouse** — focus switching, split direction, divider dragging,
-  per-pane scrollback; every key binding is configurable. Bracketed paste is
-  negotiated with the host terminal and forwarded to panes that enable it, so
-  pasting into a TUI agent arrives as one atomic paste, not a key flood.
+  native terminal text selection, per-pane scrollback; every key binding is
+  configurable. Bracketed paste is negotiated with the host terminal and
+  forwarded to panes that enable it, so pasting into a TUI agent arrives as
+  one atomic paste, not a key flood.
 - **Cross-platform by design** — platform-specific code is confined to
   `src/pty.rs` (portable-pty: Unix PTY / Windows ConPTY) and `src/ipc.rs`
   (interprocess: Unix socket / Windows named pipe). Built and tested on

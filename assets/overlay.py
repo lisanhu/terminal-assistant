@@ -30,16 +30,17 @@ FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 # (label text, start time in seconds); each badge holds HOLD secs then fades.
 EVENTS = [
-    ("F9 g  ·  focus toggle", 9.8),
-    ("F9 t  ·  layout toggle", 15.6),
-    ("F9 Left  ·  divider", 20.8),
-    ("F9 Right  ·  divider", 24.6),
-    ("F9 s  ·  scroll mode", 28.5),
-    ("F9 n  ·  hide agent panel", 36.7),
-    ("F9 n  ·  show agent panel", 39.4),
-    ("F9 v  ·  zoom pane", 42.4),
-    ("F9 v  ·  unzoom", 45.4),
-    ("F9 q  ·  quit", 47.9),
+    ("F9 g  ·  focus toggle", 12.3),
+    ("F9 t  ·  layout toggle", 18.1),
+    ("F9 Left  ·  divider", 23.3),
+    ("F9 Right  ·  divider", 27.1),
+    ("F9 s  ·  scroll mode", 31.0),
+    ("F9 n  ·  hide agent panel", 39.2),
+    ("F9 n  ·  show agent panel", 41.9),
+    ("Shift + drag  ·  select text", 44.9),
+    ("F9 v  ·  borderless view", 47.9),
+    ("F9 v  ·  restore split", 51.9),
+    ("F9 q  ·  quit", 54.4),
 ]
 HOLD, FADE = 2.0, 0.8
 
@@ -65,9 +66,22 @@ def make_badges(out_dir: Path) -> list[Path]:
 
 
 def overlay(badges: list[Path]) -> None:
+    duration = subprocess.check_output(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(MP4),
+        ],
+        text=True,
+    ).strip()
     cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(MP4)]
     for p in badges:
-        cmd += ["-loop", "1", "-framerate", "30", "-t", "60", "-i", str(p)]
+        cmd += ["-loop", "1", "-framerate", "30", "-t", duration, "-i", str(p)]
     parts = []
     for idx, (_, s) in enumerate(EVENTS, start=1):
         parts.append(

@@ -162,6 +162,16 @@ impl App {
         )
     }
 
+    /// Content size of a pane rect. Normal panes reserve one cell on every
+    /// side for the border; fullscreen view is deliberately borderless.
+    pub fn content_size(area: Rect, borderless: bool) -> (u16, u16) {
+        if borderless {
+            (area.height.max(1), area.width.max(1))
+        } else {
+            Self::inner_size(area)
+        }
+    }
+
     pub fn set_term_size(&mut self, w: u16, h: u16) {
         self.term_size = (w, h);
     }
@@ -169,12 +179,13 @@ impl App {
     /// Recompute pane sizes and resize the PTYs and terminals.
     pub fn relayout(&mut self) {
         let (la, ra) = self.rects();
+        let borderless = self.zoomed;
         if let (Some(area), Some(pane)) = (la, self.left.as_mut()) {
-            let (rows, cols) = Self::inner_size(area);
+            let (rows, cols) = Self::content_size(area, borderless);
             pane.resize(rows, cols);
         }
         if let (Some(area), Some(pane)) = (ra, self.right.as_mut()) {
-            let (rows, cols) = Self::inner_size(area);
+            let (rows, cols) = Self::content_size(area, borderless);
             pane.resize(rows, cols);
         }
     }
@@ -212,7 +223,7 @@ impl App {
             Focus::Right => ra,
         };
         if let Some(area) = area {
-            let page = Self::inner_size(area).0 as isize;
+            let page = Self::content_size(area, self.zoomed).0 as isize;
             self.scroll_focused(sign * page.max(1));
         }
     }
@@ -313,6 +324,9 @@ impl App {
                 self.show_agent()
             } else {
                 self.focus = Focus::Right;
+                if self.zoomed {
+                    self.relayout();
+                }
                 "agent pane focused".to_string()
             }
         } else {
@@ -548,6 +562,19 @@ mod tests {
         app.toggle_zoom();
         assert!(app.zoomed);
         assert_eq!(app.rects(), (Some(full), None));
+        assert_eq!(
+            app.left
+                .as_ref()
+                .unwrap()
+                .term
+                .lock()
+                .unwrap()
+                .parser()
+                .screen()
+                .size(),
+            (24, 80),
+            "borderless view gives the PTY the full terminal size"
+        );
 
         // Focus switch while zoomed: the fullscreen follows the focus.
         app.focus = Focus::Right;
@@ -559,6 +586,13 @@ mod tests {
         let (la, ra) = app.rects();
         assert!(la.is_some() && ra.is_some());
         assert_ne!(la, Some(full));
+    }
+
+    #[test]
+    fn content_size_only_reserves_space_for_bordered_panes() {
+        let area = Rect::new(0, 0, 80, 24);
+        assert_eq!(App::content_size(area, false), (22, 78));
+        assert_eq!(App::content_size(area, true), (24, 80));
     }
 
     #[test]

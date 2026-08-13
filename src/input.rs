@@ -43,6 +43,9 @@ fn chrome_action(app: &mut App, kb: &KeyBindings, ev: KeyEvent) -> bool {
         app.should_quit = true;
     } else if kb.focus_toggle.matches(&ev) {
         app.focus = app.focus.other();
+        if app.zoomed {
+            app.relayout();
+        }
     } else if kb.layout_toggle.matches(&ev) {
         app.layout = app.layout.flipped();
         app.relayout();

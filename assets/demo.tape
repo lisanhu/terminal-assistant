@@ -17,16 +17,18 @@ Set CursorBlink false
 # prefix = "Alt+q" below and presses Alt+Q as a stand-in for the real
 # default prefix (F9); the overlay badges show the true F9 bindings.
 Hide
-Type "export PATH=/home/lisanhu/mine/workspace/AI/terminal-assistant/target/release:$PATH"
+Type "export PATH=$PWD/target/release:$PATH"
 Enter
-Type `mkdir -p ~/.config/termassist && printf 'agent = "kimi"\n\n[keybindings]\nprefix = "Alt+q"\n' > ~/.config/termassist/config.toml`
+Type "unset TERM_ASSIST_SOCK"
+Enter
+Type `printf 'agent = "kimi"\n\n[keybindings]\nprefix = "Alt+q"\n' > ./dev-config.toml`
 Enter
 Type "clear"
 Enter
 Show
 
 # --- visible setup: the ta alias ---
-Type "alias ta=termassist"
+Type "alias ta='termassist --config ./dev-config.toml'"
 Enter
 Sleep 1s
 
@@ -90,10 +92,13 @@ Alt+Q
 Type "n"
 Sleep 3s
 
-# --- F9 v: zoom the focused pane fullscreen / restore ---
+# --- Shift + drag: native terminal selection (documented by overlay) ---
+Sleep 3s
+
+# --- F9 v: borderless fullscreen view / restore ---
 Alt+Q
 Type "v"
-Sleep 3s
+Sleep 4s
 Alt+Q
 Type "v"
 Sleep 2.5s

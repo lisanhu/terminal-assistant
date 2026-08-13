@@ -23,9 +23,9 @@
 
 ![termassist 演示：全部快捷键](assets/demo.gif)
 
-全部快捷键演示：焦点切换、布局切换、分隔线移动、回滚模式、
-agent 面板隐藏/恢复、退出。（源文件：`assets/demo.tape`，用
-[VHS](https://github.com/charmbracelet/vhs) 录制。）
+演示内容包括焦点切换、布局切换、分隔线移动、回滚模式、agent 面板
+隐藏/恢复、原生文本选择、无边框查看和退出。（源文件：
+`assets/demo.tape`，用 [VHS](https://github.com/charmbracelet/vhs) 录制。）
 
 ## 安装
 
@@ -55,14 +55,17 @@ prefix 会把 prefix 键本身发给 pane。以下键位均可配置（见[配�
 | `F9` `s` | 进入焦点 pane 的回滚模式 |
 | `F9` `←` / `F9` `→` | 移动分隔线（调整分屏比例） |
 | `F9` `n` | 开关 agent 面板（启动 / 隐藏 / 恢复） |
-| `F9` `v` | 把焦点 pane 放大到全屏（再按恢复；另一侧在后台继续运行） |
+| `F9` `v` | 让焦点 pane 无边框全屏显示（再按恢复；另一侧在后台继续运行） |
 | `F9` `q` | 退出 |
 
 **回滚模式：** `↑`/`k`、`↓`/`j`、`PageUp`/`PageDown`、`Home`/`g`（顶部）、
 `End`/`G`（底部）、`Esc`/`q`（退出）。滚到底部也会自动退出。
 
-**鼠标：** 点击 pane 聚焦，拖拽分隔线调整比例，滚轮翻看历史。焦点 pane
-的边框会高亮。调整终端窗口大小会重新布局并 resize 两个 PTY。
+**鼠标：** 点击 pane 聚焦，拖拽分隔线调整比例，滚轮翻看历史。要用外层
+终端选择文本，可以按住 `Shift` 再用左键拖拽（多数终端模拟器支持），
+选中后使用外层终端原有的复制命令。按 `F9` `v` 可进入无边框全屏查看，
+跨行选择时不会选中 pane 边框。非全屏状态下，焦点 pane 的边框会高亮。
+调整终端窗口大小会重新布局并 resize 两个 PTY。
 
 ### agent 面板状态
 
@@ -88,10 +91,10 @@ prefix 会把 prefix 键本身发给 pane。以下键位均可配置（见[配�
 - **嵌套调用自动转发**——在 pane 里直接敲 `termassist`（或 `ta`）不会
   再嵌套一个新 TUI，而是转发给正在运行的实例：打开或聚焦 agent 面板，
   然后退出。
-- **键盘 + 鼠标**——焦点切换、分屏方向切换、拖拽边框调比例、每侧独立
-  回滚；所有键位都可配置。支持 bracketed paste：与外层终端协商后，
-  对开启了该模式的 pane 以一整块的形式转发粘贴内容，粘贴进 TUI agent
-  时不再是逐键洪泛。
+- **键盘 + 鼠标**——焦点切换、分屏方向切换、拖拽边框调比例、外层终端
+  原生文本选择、每侧独立回滚；所有键位都可配置。支持 bracketed paste：
+  与外层终端协商后，对开启了该模式的 pane 以一整块的形式转发粘贴内容，
+  粘贴进 TUI agent 时不再是逐键洪泛。
 - **架构上跨平台**——平台相关代码只存在于 `src/pty.rs`（portable-pty：
   Unix PTY / Windows ConPTY）和 `src/ipc.rs`（interprocess：Unix socket /
   Windows named pipe）。已在 Linux 上构建和测试；macOS/Windows 可以编译
